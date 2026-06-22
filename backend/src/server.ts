@@ -144,6 +144,57 @@ app.get("/api/users/me", authMiddleware, async (req: AuthRequest, res) => {
 // BOOKMARKS CRUD ROUTES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+interface SSEClient {
+  userId: string;
+  res: Response;
+}
+let sseClients: SSEClient[] = [];
+
+// Helper to notify clients
+function notifyClients(userId: string, type: string, data?: any) {
+  const payload = JSON.stringify({ type, data });
+  sseClients.forEach((client) => {
+    if (client.userId === userId) {
+      try {
+        client.res.write(`data: ${payload}\n\n`);
+      } catch (err) {
+        console.warn("[SSE] Failed to write to client:", err);
+      }
+    }
+  });
+}
+
+// GET /api/bookmarks/events (SSE Stream)
+app.get("/api/bookmarks/events", (req, res) => {
+  const token = req.query.token as string;
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+    const userId = decoded.id;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // Send initial ping to keep connection alive
+    res.write(`data: ${JSON.stringify({ type: "connected" })}\n\n`);
+
+    const client = { userId, res };
+    sseClients.push(client);
+
+    req.on("close", () => {
+      sseClients = sseClients.filter((c) => c !== client);
+    });
+  } catch (err) {
+    res.status(401).json({ error: "Invalid token" });
+  }
+});
+
 // GET /api/bookmarks
 app.get("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
   try {
@@ -201,6 +252,9 @@ app.post("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
 
     // Respond immediately to the client
     res.status(201).json(bookmark.toJSON());
+
+    // Notify other clients about the creation
+    notifyClients(req.userId!, "bookmark_created", bookmark.toJSON());
 
     // Perform scraping in the background asynchronously
     if (shouldScrapeTitle || shouldScrapeImage || shouldScrapeDesc) {
@@ -343,6 +397,10 @@ app.post("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
           console.log(
             `[Server Auto-Scrape Background] Successfully updated bookmark ${payload.id}`,
           );
+          // Notify clients that the bookmark details have been updated!
+          if (payload.userId) {
+            notifyClients(payload.userId, "bookmark_updated", { id: payload.id });
+          }
         } catch (backgroundErr) {
           console.error(
             "[Server Auto-Scrape Background] Error during async crawl:",
@@ -391,6 +449,9 @@ app.put("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
     await existingBookmark.save();
 
     res.json(existingBookmark.toJSON());
+
+    // Notify clients of modification
+    notifyClients(req.userId!, "bookmark_updated", existingBookmark.toJSON());
   } catch (err: any) {
     console.error("[API Bookmarks PUT] Error:", err);
     res.status(500).json({ error: err.message || "Internal Server Error" });
@@ -417,6 +478,9 @@ app.put(
       );
 
       res.json({ success: true, modifiedCount: result.modifiedCount });
+
+      // Notify clients of group rename updates
+      notifyClients(req.userId!, "bookmark_updated");
     } catch (err: any) {
       console.error("[API Bookmarks Group PUT] Error:", err);
       res.status(500).json({ error: err.message || "Internal Server Error" });
@@ -440,6 +504,9 @@ app.delete("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
     }
 
     res.json({ success: true });
+
+    // Notify clients of deletion
+    notifyClients(req.userId!, "bookmark_deleted", { id });
   } catch (err: any) {
     console.error("[API Bookmarks DELETE] Error:", err);
     res.status(500).json({ error: err.message || "Internal Server Error" });

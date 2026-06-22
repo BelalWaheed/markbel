@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth.js'
 import { api } from '../lib/api.js'
 import { 
@@ -31,7 +31,17 @@ export default function BookmarksPage() {
   const [loading, setLoading] = useState(true)
 
   // View states
-  const [activeGroup, setActiveGroup] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeGroup = searchParams.get('group')
+  const setActiveGroup = (groupName: string | null) => {
+    const newParams = new URLSearchParams(searchParams)
+    if (groupName) {
+      newParams.set('group', groupName)
+    } else {
+      newParams.delete('group')
+    }
+    setSearchParams(newParams)
+  }
   const [searchQuery, setSearchQuery] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
@@ -111,6 +121,34 @@ export default function BookmarksPage() {
   useEffect(() => {
     loadBookmarks()
   }, [])
+
+  // Real-time updates via Server-Sent Events (SSE)
+  useEffect(() => {
+    const storedToken = localStorage.getItem('markbel_token')
+    if (!storedToken || !user) return
+
+    const sseUrl = `/api/bookmarks/events?token=${encodeURIComponent(storedToken)}`
+    const eventSource = new EventSource(sseUrl)
+
+    eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data)
+        if (['bookmark_created', 'bookmark_updated', 'bookmark_deleted'].includes(payload.type)) {
+          loadBookmarks()
+        }
+      } catch (err) {
+        console.error('Failed to parse real-time update:', err)
+      }
+    }
+
+    eventSource.onerror = () => {
+      eventSource.close()
+    }
+
+    return () => {
+      eventSource.close()
+    }
+  }, [user])
 
   // Extract unique groups
   const groups = useMemo(() => {

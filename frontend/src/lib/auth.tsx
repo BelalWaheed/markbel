@@ -25,6 +25,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const sendTokenToNative = (t: string | null) => {
+    if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
+      (window as any).ReactNativeWebView.postMessage(
+        JSON.stringify({ type: 'TOKEN_SYNC', token: t })
+      );
+    }
+  }
+
+
   useEffect(() => {
     async function bootstrap() {
       const storedToken = localStorage.getItem('markbel_token')
@@ -33,11 +42,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const profile = await api.get<UserProfile>('/users/me')
           setUser(profile)
+          sendTokenToNative(storedToken)
         } catch (err) {
           console.error('[Auth] Token validation failed, logging out:', err)
           localStorage.removeItem('markbel_token')
           setToken(null)
           setUser(null)
+          sendTokenToNative(null)
         }
       }
       setLoading(false)
@@ -52,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('markbel_token', data.token)
       setToken(data.token)
       setUser(data.user)
+      sendTokenToNative(data.token)
     } finally {
       setLoading(false)
     }
@@ -64,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('markbel_token', data.token)
       setToken(data.token)
       setUser(data.user)
+      sendTokenToNative(data.token)
     } finally {
       setLoading(false)
     }
@@ -73,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('markbel_token')
     setToken(null)
     setUser(null)
+    sendTokenToNative(null)
   }
 
   return (

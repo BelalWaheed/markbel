@@ -124,9 +124,47 @@ app.get("/api/users/me", authMiddleware, async (req, res) => {
         res.status(500).json({ error: err.message || "Internal Server Error" });
     }
 });
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// BOOKMARKS CRUD ROUTES
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let sseClients = [];
+// Helper to notify clients
+function notifyClients(userId, type, data) {
+    const payload = JSON.stringify({ type, data });
+    sseClients.forEach((client) => {
+        if (client.userId === userId) {
+            try {
+                client.res.write(`data: ${payload}\n\n`);
+            }
+            catch (err) {
+                console.warn("[SSE] Failed to write to client:", err);
+            }
+        }
+    });
+}
+// GET /api/bookmarks/events (SSE Stream)
+app.get("/api/bookmarks/events", (req, res) => {
+    const token = req.query.token;
+    if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+    }
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const userId = decoded.id;
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        // Send initial ping to keep connection alive
+        res.write(`data: ${JSON.stringify({ type: "connected" })}\n\n`);
+        const client = { userId, res };
+        sseClients.push(client);
+        req.on("close", () => {
+            sseClients = sseClients.filter((c) => c !== client);
+        });
+    }
+    catch (err) {
+        res.status(401).json({ error: "Invalid token" });
+    }
+});
 // GET /api/bookmarks
 app.get("/api/bookmarks", authMiddleware, async (req, res) => {
     try {
@@ -179,6 +217,8 @@ app.post("/api/bookmarks", authMiddleware, async (req, res) => {
         await bookmark.save();
         // Respond immediately to the client
         res.status(201).json(bookmark.toJSON());
+        // Notify other clients about the creation
+        notifyClients(req.userId, "bookmark_created", bookmark.toJSON());
         // Perform scraping in the background asynchronously
         if (shouldScrapeTitle || shouldScrapeImage || shouldScrapeDesc) {
             (async () => {
@@ -291,6 +331,10 @@ app.post("/api/bookmarks", authMiddleware, async (req, res) => {
                         },
                     });
                     console.log(`[Server Auto-Scrape Background] Successfully updated bookmark ${payload.id}`);
+                    // Notify clients that the bookmark details have been updated!
+                    if (payload.userId) {
+                        notifyClients(payload.userId, "bookmark_updated", { id: payload.id });
+                    }
                 }
                 catch (backgroundErr) {
                     console.error("[Server Auto-Scrape Background] Error during async crawl:", backgroundErr);
@@ -328,6 +372,8 @@ app.put("/api/bookmarks", authMiddleware, async (req, res) => {
         existingBookmark.updatedAt = new Date().toISOString();
         await existingBookmark.save();
         res.json(existingBookmark.toJSON());
+        // Notify clients of modification
+        notifyClients(req.userId, "bookmark_updated", existingBookmark.toJSON());
     }
     catch (err) {
         console.error("[API Bookmarks PUT] Error:", err);
@@ -346,6 +392,8 @@ app.put("/api/bookmarks/group", authMiddleware, async (req, res) => {
         }
         const result = await Bookmark.updateMany({ userId: req.userId, group: oldName }, { $set: { group: newName, updatedAt: new Date().toISOString() } });
         res.json({ success: true, modifiedCount: result.modifiedCount });
+        // Notify clients of group rename updates
+        notifyClients(req.userId, "bookmark_updated");
     }
     catch (err) {
         console.error("[API Bookmarks Group PUT] Error:", err);
@@ -366,6 +414,8 @@ app.delete("/api/bookmarks", authMiddleware, async (req, res) => {
             return;
         }
         res.json({ success: true });
+        // Notify clients of deletion
+        notifyClients(req.userId, "bookmark_deleted", { id });
     }
     catch (err) {
         console.error("[API Bookmarks DELETE] Error:", err);
