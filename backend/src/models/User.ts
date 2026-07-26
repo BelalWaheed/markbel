@@ -6,6 +6,10 @@ export interface IUser {
   email: string
   password?: string
   avatar?: string
+  ticktickAccessToken?: string
+  ticktickRefreshToken?: string
+  ticktickTokenExpiresAt?: number
+  ticktickDefaultProjectId?: string
   createdAt: string
 }
 
@@ -18,6 +22,10 @@ const UserSchema = new Schema<IUserDocument>(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     avatar: { type: String, default: '' },
+    ticktickAccessToken: { type: String, default: '' },
+    ticktickRefreshToken: { type: String, default: '' },
+    ticktickTokenExpiresAt: { type: Number, default: 0 },
+    ticktickDefaultProjectId: { type: String, default: '' },
     createdAt: { type: String, required: true }
   },
   {
@@ -28,6 +36,8 @@ const UserSchema = new Schema<IUserDocument>(
         delete cleanRet._id
         delete cleanRet.__v
         delete cleanRet.password
+        delete cleanRet.ticktickAccessToken
+        delete cleanRet.ticktickRefreshToken
         return cleanRet
       }
     }

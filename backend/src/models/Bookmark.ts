@@ -8,6 +8,12 @@ export interface IBookmark {
   description?: string
   image?: string
   group: string
+  isRead?: boolean
+  readAt?: string
+  isPinned?: boolean
+  remindAt?: string
+  isArchived?: boolean
+  archiveGroup?: string
   createdAt: string
   updatedAt: string
 }
@@ -23,6 +29,12 @@ const BookmarkSchema = new Schema<IBookmarkDocument>(
     description: { type: String, default: '' },
     image: { type: String, default: '' },
     group: { type: String, required: true, default: 'Unsorted' },
+    isRead: { type: Boolean, default: false },
+    readAt: { type: String, default: '' },
+    isPinned: { type: Boolean, default: false },
+    remindAt: { type: String, default: '' },
+    isArchived: { type: Boolean, default: false },
+    archiveGroup: { type: String, default: '' },
     createdAt: { type: String, required: true },
     updatedAt: { type: String, required: true }
   },
@@ -39,6 +51,7 @@ const BookmarkSchema = new Schema<IBookmarkDocument>(
 )
 
 BookmarkSchema.index({ userId: 1, group: 1, createdAt: 1 })
+BookmarkSchema.index({ userId: 1, isArchived: 1, isRead: 1 })
 
 const Bookmark: Model<IBookmarkDocument> =
   mongoose.models.Bookmark || mongoose.model<IBookmarkDocument>('Bookmark', BookmarkSchema)
