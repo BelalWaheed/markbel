@@ -7,6 +7,12 @@ const BookmarkSchema = new Schema({
     description: { type: String, default: '' },
     image: { type: String, default: '' },
     group: { type: String, required: true, default: 'Unsorted' },
+    isRead: { type: Boolean, default: false },
+    readAt: { type: String, default: '' },
+    isPinned: { type: Boolean, default: false },
+    remindAt: { type: String, default: '' },
+    isArchived: { type: Boolean, default: false },
+    archiveGroup: { type: String, default: '' },
     createdAt: { type: String, required: true },
     updatedAt: { type: String, required: true }
 }, {
@@ -20,5 +26,6 @@ const BookmarkSchema = new Schema({
     }
 });
 BookmarkSchema.index({ userId: 1, group: 1, createdAt: 1 });
+BookmarkSchema.index({ userId: 1, isArchived: 1, isRead: 1 });
 const Bookmark = mongoose.models.Bookmark || mongoose.model('Bookmark', BookmarkSchema);
 export default Bookmark;

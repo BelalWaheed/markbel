@@ -5,6 +5,10 @@ const UserSchema = new Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     avatar: { type: String, default: '' },
+    ticktickAccessToken: { type: String, default: '' },
+    ticktickRefreshToken: { type: String, default: '' },
+    ticktickTokenExpiresAt: { type: Number, default: 0 },
+    ticktickDefaultProjectId: { type: String, default: '' },
     createdAt: { type: String, required: true }
 }, {
     timestamps: false,
@@ -14,6 +18,8 @@ const UserSchema = new Schema({
             delete cleanRet._id;
             delete cleanRet.__v;
             delete cleanRet.password;
+            delete cleanRet.ticktickAccessToken;
+            delete cleanRet.ticktickRefreshToken;
             return cleanRet;
         }
     }
