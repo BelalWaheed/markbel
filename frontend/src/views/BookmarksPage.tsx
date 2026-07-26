@@ -19,7 +19,17 @@ import {
   LogOut,
   User as UserIcon,
   Loader2,
-  Sparkles
+  Sparkles,
+  Pin,
+  BookmarkCheck,
+  Archive,
+  Settings,
+  RefreshCw,
+  Calendar,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Bell
 } from 'lucide-react'
 import MarkbelLogo from '../components/MarkbelLogo.js'
 
@@ -29,8 +39,9 @@ export default function BookmarksPage() {
 
   const [bookmarks, setBookmarks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({ total: 0, read: 0, unread: 0, savedThisWeek: 0, pinnedCount: 0, archivedCount: 0 })
 
-  // View states
+  // Filter and View states
   const [searchParams, setSearchParams] = useSearchParams()
   const activeGroup = searchParams.get('group')
   const setActiveGroup = (groupName: string | null) => {
@@ -42,6 +53,7 @@ export default function BookmarksPage() {
     }
     setSearchParams(newParams)
   }
+  const [filterStatus, setFilterStatus] = useState<'all' | 'unread' | 'read' | 'due'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
@@ -56,6 +68,7 @@ export default function BookmarksPage() {
   const [formDescription, setFormDescription] = useState('')
   const [formGroup, setFormGroup] = useState('Read Later')
   const [formImage, setFormImage] = useState('')
+  const [formRemindAt, setFormRemindAt] = useState('')
   const [newGroupInput, setNewGroupInput] = useState('')
   const [isScrapingMeta, setIsScrapingMeta] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -63,6 +76,87 @@ export default function BookmarksPage() {
   // Custom themed delete confirmation states
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [bookmarkToDelete, setBookmarkToDelete] = useState<any>(null)
+
+  // Archive Modal states
+  const [showArchiveModal, setShowArchiveModal] = useState(false)
+  const [bookmarkToArchive, setBookmarkToArchive] = useState<any>(null)
+  const [archiveGroupInput, setArchiveGroupInput] = useState('archive-general')
+
+  // TickTick Push Modal states
+  const [showTickTickModal, setShowTickTickModal] = useState(false)
+  const [bookmarkToPush, setBookmarkToPush] = useState<any>(null)
+  const [ticktickProjects, setTicktickProjects] = useState<any[]>([])
+  const [selectedTicktickProject, setSelectedTicktickProject] = useState('')
+  const [ticktickDueDate, setTicktickDueDate] = useState('')
+  const [isPushingTicktick, setIsPushingTicktick] = useState(false)
+  const [pushedSuccessId, setPushedSuccessId] = useState<string | null>(null)
+  const [ticktickConnected, setTicktickConnected] = useState(false)
+
+  // Resurface state
+  const [resurfaceBookmarks, setResurfaceBookmarks] = useState<any[]>([])
+  const [showResurface, setShowResurface] = useState(true)
+
+  // Quick Push state
+  const [pushSubscribed, setPushSubscribed] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
+          setPushSubscribed(Boolean(sub))
+        })
+      })
+    }
+  }, [])
+
+  const handleQuickEnablePush = async () => {
+    setPushLoading(true)
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        alert('Notification permission denied by browser')
+        return
+      }
+
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+
+      const vapidRes = await api.get<{ publicKey: string }>('/push/vapid-key')
+      if (!vapidRes.publicKey) {
+        alert('VAPID public key not set on backend')
+        return
+      }
+
+      const padding = '='.repeat((4 - (vapidRes.publicKey.length % 4)) % 4)
+      const base64 = (vapidRes.publicKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+      const rawData = window.atob(base64)
+      const outputArray = new Uint8Array(rawData.length)
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i)
+      }
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: outputArray
+      })
+
+      const subObj = sub.toJSON()
+      await api.post('/push/subscribe', {
+        endpoint: subObj.endpoint,
+        keys: subObj.keys,
+        deviceLabel: navigator.userAgent.includes('Mobile') ? 'Mobile Browser' : 'Desktop Browser'
+      })
+
+      setPushSubscribed(true)
+      alert('Push notifications enabled for this device!')
+    } catch (err: any) {
+      console.error(err)
+      alert('Push setup failed: ' + err.message)
+    } finally {
+      setPushLoading(false)
+    }
+  }
 
   // Edit Group states
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
@@ -106,11 +200,40 @@ export default function BookmarksPage() {
     localStorage.setItem('markbel_group_colors', JSON.stringify(updated))
   }
 
-  // Fetch bookmarks
+  // Fetch bookmarks, stats, and resurface picks
+  const loadStats = async () => {
+    try {
+      const data = await api.get<any>('/bookmarks/stats')
+      setStats(data)
+    } catch (err) {
+      console.warn('Failed to load stats:', err)
+    }
+  }
+
+  const loadResurface = async () => {
+    try {
+      const data = await api.get<any[]>('/bookmarks/random?count=3')
+      setResurfaceBookmarks(data)
+    } catch (err) {
+      console.warn('Failed to load resurface picks:', err)
+    }
+  }
+
+  const checkTicktickStatus = async () => {
+    try {
+      const res = await api.get<{ connected: boolean }>('/integrations/ticktick/status')
+      setTicktickConnected(res.connected)
+    } catch (err) {
+      console.warn('Failed to check TickTick status:', err)
+    }
+  }
+
   const loadBookmarks = async () => {
     try {
       const data = await api.get<any[]>('/bookmarks')
       setBookmarks(data)
+      loadStats()
+      loadResurface()
     } catch (err) {
       console.error('Failed to load bookmarks:', err)
     } finally {
@@ -120,33 +243,53 @@ export default function BookmarksPage() {
 
   useEffect(() => {
     loadBookmarks()
+    checkTicktickStatus()
   }, [])
 
-  // Real-time updates via Server-Sent Events (SSE)
+  // Real-time updates via Server-Sent Events (SSE) with reconnect logic
   useEffect(() => {
     const storedToken = localStorage.getItem('markbel_token')
     if (!storedToken || !user) return
 
-    const sseUrl = `/api/bookmarks/events?token=${encodeURIComponent(storedToken)}`
-    const eventSource = new EventSource(sseUrl)
+    let eventSource: EventSource | null = null
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let retryDelay = 1000
 
-    eventSource.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data)
-        if (['bookmark_created', 'bookmark_updated', 'bookmark_deleted'].includes(payload.type)) {
-          loadBookmarks()
+    const connectSSE = () => {
+      const sseUrl = `/api/bookmarks/events?token=${encodeURIComponent(storedToken)}`
+      eventSource = new EventSource(sseUrl)
+
+      eventSource.onopen = () => {
+        retryDelay = 1000
+      }
+
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          if (['bookmark_created', 'bookmark_updated', 'bookmark_deleted'].includes(payload.type)) {
+            loadBookmarks()
+          }
+        } catch (err) {
+          console.error('Failed to parse real-time update:', err)
         }
-      } catch (err) {
-        console.error('Failed to parse real-time update:', err)
+      }
+
+      eventSource.onerror = () => {
+        if (eventSource) {
+          eventSource.close()
+        }
+        reconnectTimeout = setTimeout(() => {
+          retryDelay = Math.min(retryDelay * 2, 30000)
+          connectSSE()
+        }, retryDelay)
       }
     }
 
-    eventSource.onerror = () => {
-      eventSource.close()
-    }
+    connectSSE()
 
     return () => {
-      eventSource.close()
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
+      if (eventSource) eventSource.close()
     }
   }, [user])
 
@@ -160,24 +303,50 @@ export default function BookmarksPage() {
     return Array.from(map.entries()).map(([name, count]) => ({ name, count }))
   }, [bookmarks])
 
-  // Filtered bookmarks based on active group + search query
+  // Filtered bookmarks based on active group + search query + status filter
   const filteredBookmarks = useMemo(() => {
     let result = bookmarks
+
+    // Group filter
     if (activeGroup && !searchQuery.trim()) {
       result = result.filter((b) => (b.group || 'Unsorted') === activeGroup)
     }
+
+    // Status filter
+    if (filterStatus === 'unread') {
+      result = result.filter((b) => !b.isRead)
+    } else if (filterStatus === 'read') {
+      result = result.filter((b) => b.isRead)
+    } else if (filterStatus === 'due') {
+      const now = new Date().toISOString()
+      result = result.filter((b) => !b.isRead && b.remindAt && b.remindAt <= now)
+    }
+
+    // Search query filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       result = result.filter(
-          (b) =>
-              b.title.toLowerCase().includes(q) ||
-              (b.description || '').toLowerCase().includes(q) ||
-              b.url.toLowerCase().includes(q) ||
-              (b.group || '').toLowerCase().includes(q)
+        (b) =>
+          b.title.toLowerCase().includes(q) ||
+          (b.description || '').toLowerCase().includes(q) ||
+          b.url.toLowerCase().includes(q) ||
+          (b.group || '').toLowerCase().includes(q)
       )
     }
-    return [...result].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  }, [bookmarks, activeGroup, searchQuery])
+
+    // Sort: Pinned first, then newest created
+    return [...result].sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1
+      if (!a.isPinned && b.isPinned) return 1
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+  }, [bookmarks, activeGroup, filterStatus, searchQuery])
+
+  // Due bookmarks count for top alert bar
+  const dueBookmarksList = useMemo(() => {
+    const now = new Date().toISOString()
+    return bookmarks.filter((b) => !b.isRead && b.remindAt && b.remindAt <= now)
+  }, [bookmarks])
 
   // Handle URL change to auto-fetch meta
   const handleUrlBlur = async () => {
@@ -185,7 +354,7 @@ export default function BookmarksPage() {
     setIsScrapingMeta(true)
     try {
       const meta = await api.get<{ title: string; description: string; image: string }>(
-          `/bookmarks/meta?url=${encodeURIComponent(formUrl.trim())}`
+        `/bookmarks/meta?url=${encodeURIComponent(formUrl.trim())}`
       )
       if (meta) {
         if (meta.title && !formTitle) setFormTitle(meta.title)
@@ -199,6 +368,28 @@ export default function BookmarksPage() {
     }
   }
 
+  // Toggle Read Status
+  const handleToggleRead = async (b: any) => {
+    try {
+      const updated = await api.patch<any>(`/bookmarks/read?id=${b.id}`, { isRead: !b.isRead })
+      setBookmarks(bookmarks.map((item) => (item.id === b.id ? updated : item)))
+      loadStats()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  // Toggle Pin Status
+  const handleTogglePin = async (b: any) => {
+    try {
+      const updated = await api.patch<any>(`/bookmarks/pin?id=${b.id}`, { isPinned: !b.isPinned })
+      setBookmarks(bookmarks.map((item) => (item.id === b.id ? updated : item)))
+      loadStats()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   // Add Bookmark Submit
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -207,28 +398,23 @@ export default function BookmarksPage() {
     setIsSaving(true)
 
     try {
-      const newB = await api.post('/bookmarks', {
+      const newB = await api.post<any>('/bookmarks', {
         title: formTitle.trim() || formUrl.trim(),
         url: formUrl.trim(),
         description: formDescription.trim(),
         image: formImage.trim(),
-        group: finalGroup
+        group: finalGroup,
+        remindAt: formRemindAt || ''
       })
 
-      // Update custom group color
       updateGroupColor(finalGroup, selectedColor)
-
       setBookmarks([newB, ...bookmarks])
       resetForm()
       setShowAddModal(false)
+      loadStats()
 
-      // Schedule background updates as scraping completes
-      setTimeout(() => {
-        loadBookmarks()
-      }, 3000)
-      setTimeout(() => {
-        loadBookmarks()
-      }, 6000)
+      setTimeout(() => loadBookmarks(), 3000)
+      setTimeout(() => loadBookmarks(), 6000)
     } catch (err) {
       console.error(err)
     } finally {
@@ -244,18 +430,17 @@ export default function BookmarksPage() {
     const finalGroup = newGroupInput.trim() || formGroup
 
     try {
-      const updatedB = await api.put(`/bookmarks?id=${selectedBookmark.id}`, {
+      const updatedB = await api.put<any>(`/bookmarks?id=${selectedBookmark.id}`, {
         title: formTitle.trim(),
         url: formUrl.trim(),
         description: formDescription.trim(),
         image: formImage.trim(),
-        group: finalGroup
+        group: finalGroup,
+        remindAt: formRemindAt || ''
       })
 
-      // Update custom group color
       updateGroupColor(finalGroup, selectedColor)
-
-      setBookmarks(bookmarks.map(b => b.id === selectedBookmark.id ? updatedB : b))
+      setBookmarks(bookmarks.map((b) => (b.id === selectedBookmark.id ? updatedB : b)))
       resetForm()
       setShowEditModal(false)
     } catch (err) {
@@ -265,7 +450,7 @@ export default function BookmarksPage() {
     }
   }
 
-  // Delete Bookmark Confirmation & Handlers
+  // Delete Bookmark Handlers
   const handleDeleteClick = (b: any) => {
     setBookmarkToDelete(b)
     setShowDeleteModal(true)
@@ -275,15 +460,76 @@ export default function BookmarksPage() {
     if (!bookmarkToDelete) return
     try {
       await api.delete(`/bookmarks?id=${bookmarkToDelete.id}`)
-      setBookmarks(bookmarks.filter(b => b.id !== bookmarkToDelete.id))
+      setBookmarks(bookmarks.filter((b) => b.id !== bookmarkToDelete.id))
       if (selectedBookmark?.id === bookmarkToDelete.id) {
         setShowEditModal(false)
         resetForm()
       }
       setShowDeleteModal(false)
       setBookmarkToDelete(null)
+      loadStats()
     } catch (err) {
       console.error(err)
+    }
+  }
+
+  // Archive Handlers
+  const openArchive = (b: any) => {
+    setBookmarkToArchive(b)
+    setArchiveGroupInput('archive-' + (b.group ? b.group.toLowerCase().replace(/\s+/g, '-') : 'general'))
+    setShowArchiveModal(true)
+  }
+
+  const confirmArchive = async () => {
+    if (!bookmarkToArchive) return
+    try {
+      await api.patch(`/bookmarks/archive?id=${bookmarkToArchive.id}`, {
+        archiveGroup: archiveGroupInput.trim() || 'archive-general'
+      })
+      setBookmarks(bookmarks.filter((b) => b.id !== bookmarkToArchive.id))
+      setShowArchiveModal(false)
+      setBookmarkToArchive(null)
+      loadStats()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  // TickTick Push Handlers
+  const openTickTick = async (b: any) => {
+    setBookmarkToPush(b)
+    setTicktickDueDate(b.remindAt ? b.remindAt.substring(0, 10) : '')
+    setShowTickTickModal(true)
+    try {
+      const status = await api.get<{ connected: boolean; defaultProjectId?: string }>('/integrations/ticktick/status')
+      setTicktickConnected(status.connected)
+      if (status.connected) {
+        const projs = await api.get<any[]>('/integrations/ticktick/projects')
+        setTicktickProjects(projs)
+        setSelectedTicktickProject(status.defaultProjectId || projs[0]?.id || '')
+      }
+    } catch (err) {
+      console.warn('Failed to load TickTick projects:', err)
+    }
+  }
+
+  const confirmPushTickTick = async () => {
+    if (!bookmarkToPush) return
+    setIsPushingTicktick(true)
+    try {
+      await api.post('/integrations/ticktick/push', {
+        bookmarkId: bookmarkToPush.id,
+        projectId: selectedTicktickProject,
+        dueDate: ticktickDueDate
+      })
+      setPushedSuccessId(bookmarkToPush.id)
+      setTimeout(() => setPushedSuccessId(null), 3000)
+      setShowTickTickModal(false)
+      setBookmarkToPush(null)
+    } catch (err: any) {
+      alert('Failed to push to TickTick: ' + (err.message || 'Unknown error'))
+    } finally {
+      setIsPushingTicktick(false)
     }
   }
 
@@ -305,24 +551,15 @@ export default function BookmarksPage() {
 
     try {
       if (oldName !== newName) {
-        // Bulk rename bookmarks belonging to this group in DB
         await api.put('/bookmarks/group', { oldName, newName })
-        
-        // Update bookmarks state locally
-        setBookmarks(bookmarks.map(b => b.group === oldName ? { ...b, group: newName } : b))
-        
-        // Update group color mapping
+        setBookmarks(bookmarks.map((b) => (b.group === oldName ? { ...b, group: newName } : b)))
         renameGroupColor(oldName, newName, formGroupColor)
-
-        // If the old group was the active view filter, update it
         if (activeGroup === oldName) {
           setActiveGroup(newName)
         }
       } else {
-        // Just update color
         updateGroupColor(oldName, formGroupColor)
       }
-
       setShowEditGroupModal(false)
     } catch (err) {
       console.error('Failed to update group:', err)
@@ -336,6 +573,7 @@ export default function BookmarksPage() {
     setFormTitle('')
     setFormDescription('')
     setFormImage('')
+    setFormRemindAt('')
     setFormGroup('Read Later')
     setNewGroupInput('')
     setSelectedBookmark(null)
@@ -347,6 +585,7 @@ export default function BookmarksPage() {
     setFormTitle(b.title)
     setFormDescription(b.description || '')
     setFormImage(b.image || '')
+    setFormRemindAt(b.remindAt ? b.remindAt.substring(0, 16) : '')
     setFormGroup(b.group || 'Unsorted')
     const color = groupColors[b.group] || defaultGroupColors[b.group] || 'cyan'
     setSelectedColor(color)
@@ -372,7 +611,6 @@ export default function BookmarksPage() {
     }
   }
 
-  // Cyber styling color mapper
   const getGroupColor = (name: string) => {
     const color = groupColors[name] || defaultGroupColors[name]
     if (color === 'cyan') return 'text-cyber-cyan border-cyber-cyan bg-cyber-cyan/5 shadow-[0_0_8px_rgba(0,240,255,0.15)]'
@@ -388,7 +626,7 @@ export default function BookmarksPage() {
   }
 
   return (
-    <div className="space-y-8 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24 min-h-screen relative overflow-x-hidden">
+    <div className="space-y-6 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24 min-h-screen relative overflow-x-hidden">
       {/* Cyber Grid & Scanline Backplates */}
       <div className="fixed inset-0 pointer-events-none z-0 cyber-grid" />
       <div className="fixed inset-0 pointer-events-none z-0 cyber-scanlines opacity-20" />
@@ -400,7 +638,7 @@ export default function BookmarksPage() {
       </div>
 
       {/* Header Navbar */}
-      <header className="cyber-card px-5 py-4 rounded flex items-center justify-between shadow-2xl relative z-10 border border-cyber-cyan/35 bg-black/90">
+      <header className="cyber-card px-5 py-4 rounded flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xl relative z-10 border border-cyber-cyan/35 bg-black/90">
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyber-cyan via-cyber-pink to-cyber-yellow" />
 
         <div className="flex items-center gap-3">
@@ -413,20 +651,126 @@ export default function BookmarksPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 bg-slate-900/60 border border-white/5 px-3 py-1.5 rounded text-xs text-slate-300">
-            <UserIcon className="w-3.5 h-3.5 text-cyber-cyan" />
-            <span className="max-w-[120px] truncate font-medium">{user?.name}</span>
-          </div>
+        {/* Live Stats Bar */}
+        <div className="flex items-center gap-3 text-[10px] font-mono font-bold text-slate-300 bg-black/80 border border-cyber-cyan/20 px-3 py-1.5 rounded">
+          <span className="text-cyber-cyan">{stats.unread} unread</span>
+          <span className="text-slate-600">·</span>
+          <span className="text-cyber-green">{stats.savedThisWeek} saved this week</span>
+          <span className="text-slate-600">·</span>
+          <span className="text-slate-400">{stats.total} total</span>
+        </div>
+
+        {/* Quick Nav Actions */}
+        <div className="flex items-center gap-2 font-mono">
+          {!pushSubscribed && (
+            <button
+              onClick={handleQuickEnablePush}
+              disabled={pushLoading}
+              className="flex items-center gap-1.5 text-xs cyber-btn-primary px-3 py-1.5 rounded shadow-[0_0_10px_rgba(255,0,127,0.3)] animate-pulse"
+              title="Click to enable Web Push Notifications on this device with 1 click"
+            >
+              {pushLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">Enable Push</span>
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/archive')}
+            className="flex items-center gap-1.5 text-xs cyber-btn-secondary px-3 py-1.5 rounded border border-cyber-yellow/30 text-cyber-yellow hover:text-white"
+            title="Cold Storage Archive"
+          >
+            <Archive className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Archive</span>
+          </button>
+          <button
+            onClick={() => navigate('/settings')}
+            className="flex items-center gap-1.5 text-xs cyber-btn-secondary px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:text-white"
+            title="Settings & Integrations"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
           <button 
             onClick={logout}
             className="flex items-center gap-1.5 text-xs cyber-btn-danger px-3 py-1.5 rounded"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
+            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       </header>
+
+      {/* Urgent "Due Today" Alert Banner */}
+      {dueBookmarksList.length > 0 && (
+        <div className="cyber-card p-4 rounded border-2 border-cyber-pink bg-black/90 relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-[0_0_20px_rgba(255,0,127,0.2)] font-mono animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded bg-cyber-pink/20 border border-cyber-pink text-cyber-pink flex items-center justify-center font-bold">
+              <AlertTriangle className="w-5 h-5 animate-bounce" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                Reading Reminders Due Today ({dueBookmarksList.length})
+              </h4>
+              <p className="text-[10px] text-slate-300 font-sans">
+                You set reminders to read these links today!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setFilterStatus('due')}
+            className="cyber-btn-primary px-3.5 py-1.5 rounded text-xs font-bold uppercase shrink-0"
+          >
+            View Due Reminders →
+          </button>
+        </div>
+      )}
+
+      {/* Resurface Discovery Card (Random Unread Pick) */}
+      {showResurface && resurfaceBookmarks.length > 0 && (
+        <section className="cyber-card p-4 sm:p-5 rounded border border-cyber-yellow/40 bg-black/90 relative z-10 font-mono space-y-3 shadow-[0_0_15px_rgba(255,230,0,0.1)]">
+          <div className="flex items-center justify-between border-b border-cyber-yellow/20 pb-2.5">
+            <div className="flex items-center gap-2 text-cyber-yellow text-xs font-bold uppercase tracking-widest">
+              <Sparkles className="w-4 h-4 animate-pulse" />
+              <span>Resurface // Rediscovery Suggestions</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadResurface}
+                className="flex items-center gap-1 text-[10px] text-cyber-yellow hover:text-white border border-cyber-yellow/30 px-2 py-0.5 rounded cursor-pointer"
+                title="Shuffle rediscovery suggestions"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Shuffle</span>
+              </button>
+              <button
+                onClick={() => setShowResurface(false)}
+                className="text-slate-500 hover:text-white p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {resurfaceBookmarks.map((rb) => (
+              <div
+                key={rb.id}
+                onClick={() => handleCardClick(rb.url)}
+                className="border border-white/10 hover:border-cyber-yellow bg-black p-3 rounded cursor-pointer group space-y-1 transition-all"
+              >
+                <span className="text-[8px] font-bold text-cyber-yellow uppercase tracking-widest block">
+                  📁 {rb.group}
+                </span>
+                <h5 className="text-xs font-bold text-white group-hover:text-cyber-yellow line-clamp-1">
+                  {rb.title}
+                </h5>
+                <p className="text-[10px] text-slate-400 truncate font-sans">
+                  {rb.url}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Navigation & Controls */}
       <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
@@ -453,8 +797,45 @@ export default function BookmarksPage() {
             )}
           </h2>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto font-mono">
+
+        {/* Filter Tabs & Search Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto font-mono">
+          {/* Status Filter Tabs */}
+          <div className="flex items-center bg-black/80 border border-cyber-cyan/25 rounded p-1 text-xs">
+            <button
+              onClick={() => setFilterStatus('all')}
+              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
+                filterStatus === 'all' ? 'bg-cyber-cyan text-black' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setFilterStatus('unread')}
+              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
+                filterStatus === 'unread' ? 'bg-cyber-cyan text-black' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Unread
+            </button>
+            <button
+              onClick={() => setFilterStatus('read')}
+              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
+                filterStatus === 'read' ? 'bg-cyber-cyan text-black' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Read
+            </button>
+            <button
+              onClick={() => setFilterStatus('due')}
+              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
+                filterStatus === 'due' ? 'bg-cyber-pink text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Due
+            </button>
+          </div>
+
           {/* Search bar */}
           <div className="flex items-center gap-2.5 bg-black/80 border border-cyber-cyan/25 rounded px-3.5 py-2 w-full sm:w-64 max-w-sm focus-within:border-cyber-pink focus-within:shadow-[0_0_12px_rgba(255,0,127,0.2)] transition-all">
             <span className="text-[10px] text-cyber-cyan/60 font-bold">[SYS.SEARCH]&gt;</span>
@@ -492,31 +873,32 @@ export default function BookmarksPage() {
             <Loader2 className="w-8 h-8 animate-spin text-cyber-cyan" />
             <span className="text-[10px] font-mono tracking-widest text-cyber-cyan/50 uppercase">Loading bookmarks...</span>
           </div>
-        ) : searchQuery.trim() || activeGroup ? (
-          /* Bookmarks List View within Group or Search */
+        ) : searchQuery.trim() || activeGroup || filterStatus !== 'all' ? (
+          /* Bookmarks List View within Group, Search, or Status Filter */
           <div>
             {filteredBookmarks.length === 0 ? (
-              <div className="text-center py-20 cyber-card rounded border-dashed border-cyber-cyan/20 max-w-md mx-auto bg-black/80">
+              <div className="text-center py-20 cyber-card rounded border-dashed border-cyber-cyan/20 max-w-md mx-auto bg-black/80 font-mono">
                 <FolderOpen className="w-12 h-12 mx-auto text-cyber-cyan/40 mb-3" />
-                <h3 className="text-sm font-mono font-bold text-white uppercase mb-1">No bookmarks found</h3>
-                <p className="text-xs text-slate-400 max-w-xs mx-auto mb-4">
-                  Add links manually or use sharing targets.
+                <h3 className="text-sm font-bold text-white uppercase mb-1">No bookmarks match filter</h3>
+                <p className="text-xs text-slate-400 max-w-xs mx-auto mb-4 font-sans">
+                  Try changing your status filter tabs or search terms.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                 {filteredBookmarks.map((b) => (
                   <div 
                     key={b.id} 
                     onClick={() => handleCardClick(b.url)}
-                    className="cyber-card cyber-card-hover rounded overflow-hidden flex flex-col justify-between group border-cyber-cyan/20 bg-black/85 relative cursor-pointer"
+                    className={`cyber-card cyber-card-hover rounded overflow-hidden flex flex-col justify-between group border-cyber-cyan/20 bg-black/85 relative cursor-pointer ${
+                      b.isRead ? 'opacity-75 hover:opacity-100' : ''
+                    }`}
                   >
                     <div className="absolute top-0 left-0 right-0 h-[2px] bg-cyber-cyan opacity-40 group-hover:bg-cyber-pink group-hover:opacity-100 transition-colors" />
 
                     <div>
                       {/* Image Thumbnail with Overlay Actions */}
                       <div className="relative aspect-video bg-black border-b border-cyber-cyan/15 overflow-hidden">
-                        {/* Persistent background placeholder icon */}
                         <div className="absolute inset-0 flex items-center justify-center text-cyber-cyan/30 bg-cyber-cyan/3 z-0">
                           <LinkIcon className="w-8 h-8 opacity-25" />
                         </div>
@@ -531,32 +913,82 @@ export default function BookmarksPage() {
                         )}
                         
                         {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px] z-20">
+                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-2 backdrop-blur-[2px] z-20">
                           <button
                             onClick={(e) => { e.stopPropagation(); handleCopy(b.id, b.url); }}
-                            className="w-9 h-9 border border-cyber-cyan/40 bg-black hover:border-cyber-cyan text-cyber-cyan flex items-center justify-center cursor-pointer transition-all active:scale-95 shadow-[0_0_8px_rgba(0,240,255,0.2)]"
+                            className="w-8 h-8 border border-cyber-cyan/40 bg-black hover:border-cyber-cyan text-cyber-cyan flex items-center justify-center cursor-pointer transition-all active:scale-95 shadow-[0_0_8px_rgba(0,240,255,0.2)]"
                             title="Copy Link URL"
                           >
                             {copiedId === b.id ? <Check className="w-4 h-4 text-cyber-green" /> : <Copy className="w-4 h-4" />}
                           </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleTogglePin(b); }}
+                            className={`w-8 h-8 border bg-black flex items-center justify-center cursor-pointer transition-all active:scale-95 ${
+                              b.isPinned ? 'border-cyber-yellow text-cyber-yellow' : 'border-white/30 text-white hover:border-cyber-yellow'
+                            }`}
+                            title={b.isPinned ? 'Unpin' : 'Pin to top'}
+                          >
+                            <Pin className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openTickTick(b); }}
+                            className="w-8 h-8 border border-[#617bfb]/50 bg-black hover:border-[#617bfb] text-[#617bfb] flex items-center justify-center cursor-pointer transition-all active:scale-95 font-bold"
+                            title="Push to TickTick Task"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openArchive(b); }}
+                            className="w-8 h-8 border border-cyber-yellow/40 bg-black hover:border-cyber-yellow text-cyber-yellow flex items-center justify-center cursor-pointer transition-all active:scale-95"
+                            title="Archive Bookmark"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </button>
                         </div>
 
                         {/* Top Badges */}
-                        <div className="absolute top-3 left-3 z-10 font-mono">
+                        <div className="absolute top-2.5 left-2.5 z-10 font-mono flex items-center gap-1.5">
                           <span className="text-[9px] font-bold uppercase tracking-widest text-cyber-cyan bg-black border border-cyber-cyan/30 px-2 py-0.5 shadow-sm">
                             {b.group || 'Unsorted'}
                           </span>
+
+                          {/* Unread dot indicator */}
+                          {!b.isRead && (
+                            <span className="w-2 h-2 rounded-full bg-cyber-cyan shadow-[0_0_8px_#00f0ff] animate-pulse" title="Unread" />
+                          )}
+
+                          {/* Pinned badge */}
+                          {b.isPinned && (
+                            <span className="text-[9px] font-bold text-cyber-yellow bg-black border border-cyber-yellow/40 px-1.5 py-0.5" title="Pinned">
+                              📌
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       {/* Content details */}
                       <div className="p-3.5 sm:p-5 space-y-1 sm:space-y-2">
-                        <div className="flex items-center gap-1.5 font-mono">
-                          <Sparkles className="w-3 h-3 text-cyber-yellow shrink-0 animate-pulse" />
-                          <span className="text-[8px] sm:text-[9px] font-bold text-cyber-cyan/70 uppercase tracking-widest block truncate">
-                            {getDomain(b.url)}
-                          </span>
+                        <div className="flex items-center justify-between font-mono">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <Sparkles className="w-3 h-3 text-cyber-yellow shrink-0" />
+                            <span className="text-[8px] sm:text-[9px] font-bold text-cyber-cyan/70 uppercase tracking-widest block truncate">
+                              {getDomain(b.url)}
+                            </span>
+                          </div>
+
+                          {/* Read/Unread Toggle Button */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleToggleRead(b); }}
+                            className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase border transition-colors cursor-pointer ${
+                              b.isRead 
+                                ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white' 
+                                : 'bg-cyber-cyan/10 border-cyber-cyan/40 text-cyber-cyan hover:bg-cyber-cyan/20'
+                            }`}
+                          >
+                            {b.isRead ? 'Read ✓' : 'Mark Read'}
+                          </button>
                         </div>
+
                         <h4 className="font-bold text-xs sm:text-sm text-white leading-snug line-clamp-2 group-hover:text-cyber-cyan transition-colors font-sans">
                           {b.title}
                         </h4>
@@ -564,6 +996,14 @@ export default function BookmarksPage() {
                           <p className="text-[10px] sm:text-xs text-slate-400 leading-relaxed line-clamp-2 sm:line-clamp-3 font-sans font-medium">
                             {b.description}
                           </p>
+                        )}
+
+                        {/* Reminder Badge */}
+                        {b.remindAt && (
+                          <div className="pt-1 flex items-center gap-1 text-[10px] text-cyber-pink font-mono font-bold">
+                            <Clock className="w-3 h-3" />
+                            <span>Remind: {new Date(b.remindAt).toLocaleDateString()}</span>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -583,7 +1023,7 @@ export default function BookmarksPage() {
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); openEdit(b); }}
-                          className="flex items-center gap-1 sm:gap-1.5 border border-cyber-cyan/30 hover:border-cyber-cyan bg-cyber-cyan/5 text-cyber-cyan text-[10px] sm:text-xs px-2 py-1 sm:px-3 sm:py-1.5 rounded transition-all cursor-pointer font-bold active:scale-95 animate-pulse"
+                          className="flex items-center gap-1 sm:gap-1.5 border border-cyber-cyan/30 hover:border-cyber-cyan bg-cyber-cyan/5 text-cyber-cyan text-[10px] sm:text-xs px-2 py-1 sm:px-3 sm:py-1.5 rounded transition-all cursor-pointer font-bold active:scale-95"
                           title="Edit Bookmark Details"
                         >
                           <span>Edit</span>
@@ -601,7 +1041,6 @@ export default function BookmarksPage() {
           <div>
             {groups.length === 0 ? (
               <div className="max-w-3xl mx-auto space-y-8 relative z-10 font-mono">
-                {/* Onboarding Guide Card */}
                 <div className="cyber-card p-6 sm:p-8 rounded border-2 border-cyber-cyan bg-black/90 relative overflow-hidden shadow-[0_0_20px_rgba(0,240,255,0.15)]">
                   <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyber-cyan via-cyber-pink to-cyber-yellow" />
                   
@@ -616,29 +1055,27 @@ export default function BookmarksPage() {
                     </h3>
                     
                     <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans font-medium">
-                      Markbel is a premium, high-performance link vault. Here is how to use the app in seconds:
+                      Markbel is a high-performance link vault with task integration. Here is how to get started:
                     </p>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pt-2 text-left">
-                      {/* Step 1 */}
-                      <div className="border border-cyber-cyan/20 p-5 rounded bg-cyan-950/5 hover:border-cyber-cyan/50 hover:shadow-[0_0_15px_rgba(0,240,255,0.1)] transition-all duration-300 space-y-2.5">
+                      <div className="border border-cyber-cyan/20 p-5 rounded bg-cyan-950/5 hover:border-cyber-cyan/50 transition-all space-y-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-cyber-cyan font-mono font-bold text-xs sm:text-sm">01 //</span>
+                          <span className="text-cyber-cyan font-bold text-xs sm:text-sm">01 //</span>
                           <h4 className="font-bold text-white text-xs sm:text-sm uppercase tracking-wider">Quick URL-Only Saves</h4>
                         </div>
                         <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed font-sans font-medium">
-                          Just paste any URL and click <strong>Create</strong>. You don't need to enter a title or description; the app automatically scrapes details in the background.
+                          Paste any URL and click <strong>Create</strong>. Auto-scrapes metadata, OG images, and YouTube titles in the background.
                         </p>
                       </div>
 
-                      {/* Step 2 (Mobile Share) */}
-                      <div className="border border-cyber-yellow/20 p-5 rounded bg-yellow-950/5 hover:border-cyber-yellow/50 hover:shadow-[0_0_15px_rgba(255,230,0,0.1)] transition-all duration-300 space-y-2.5">
+                      <div className="border border-cyber-yellow/20 p-5 rounded bg-yellow-950/5 hover:border-cyber-yellow/50 transition-all space-y-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-cyber-yellow font-mono font-bold text-xs sm:text-sm">02 //</span>
-                          <h4 className="font-bold text-white text-xs sm:text-sm uppercase tracking-wider">Mobile Share Actions</h4>
+                          <span className="text-cyber-yellow font-bold text-xs sm:text-sm">02 //</span>
+                          <h4 className="font-bold text-white text-xs sm:text-sm uppercase tracking-wider">TickTick Tasks Integration</h4>
                         </div>
                         <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed font-sans font-medium">
-                          Access Markbel on the go. Share any webpage or link from your mobile device's native share sheet directly into your bookmark vault.
+                          Connect TickTick in Settings. Turn reading bookmarks into real tasks with due dates and project organization.
                         </p>
                       </div>
                     </div>
@@ -698,7 +1135,7 @@ export default function BookmarksPage() {
                   )
                 })}
 
-                {/* Quick create card */}
+                {/* Quick create group card */}
                 <div 
                   onClick={() => { resetForm(); setShowAddModal(true) }}
                   className="border border-dashed border-cyber-cyan/25 hover:border-cyber-pink hover:bg-cyber-pink/3 transition-all duration-300 rounded h-32 sm:h-40 flex flex-col items-center justify-center text-center p-4 sm:p-6 cursor-pointer group font-mono"
@@ -714,10 +1151,10 @@ export default function BookmarksPage() {
         )}
       </main>
 
-      {/* Add Modal */}
+      {/* Add Bookmark Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-lg p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-cyan bg-black">
+          <div className="cyber-card w-full max-w-lg p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-cyan bg-black font-mono">
             <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyber-cyan to-cyber-pink" />
 
             <div className="flex items-center justify-between mb-5">
@@ -747,7 +1184,7 @@ export default function BookmarksPage() {
               <div>
                 <div className="flex justify-between mb-1.5">
                   <label className="text-xs font-semibold text-slate-300">Title</label>
-                  {isScrapingMeta && <span className="text-[10px] text-cyber-green font-bold animate-pulse font-mono">Fetching info...</span>}
+                  {isScrapingMeta && <span className="text-[10px] text-cyber-green font-bold animate-pulse">Fetching info...</span>}
                 </div>
                 <input 
                   type="text"
@@ -765,18 +1202,17 @@ export default function BookmarksPage() {
                   onChange={(e) => setFormDescription(e.target.value)}
                   placeholder="Notes, takeaways..." 
                   rows={2}
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm resize-none"
+                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm resize-none font-sans"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Thumbnail Image URL</label>
+                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Optional Reading Reminder Date</label>
                 <input 
-                  type="url"
-                  value={formImage}
-                  onChange={(e) => setFormImage(e.target.value)}
-                  placeholder="https://example.com/image.jpg" 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                  type="datetime-local"
+                  value={formRemindAt}
+                  onChange={(e) => setFormRemindAt(e.target.value)}
+                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm text-cyber-cyan bg-black"
                 />
               </div>
 
@@ -793,11 +1229,16 @@ export default function BookmarksPage() {
                     }}
                     className="w-full cyber-input rounded px-3 py-2.5 text-sm bg-black text-cyber-cyan"
                   >
+                    <option value="Read Later" className="bg-black text-cyber-cyan">Read Later</option>
+                    <option value="Inspiration" className="bg-black text-cyber-cyan">Inspiration</option>
+                    <option value="Development" className="bg-black text-cyber-cyan">Development</option>
+                    <option value="Resources" className="bg-black text-cyber-cyan">Resources</option>
+                    <option value="Unsorted" className="bg-black text-cyber-cyan">Unsorted</option>
                     {groups.map(g => (
-                      <option key={g.name} value={g.name} className="bg-black text-cyber-cyan">{g.name}</option>
+                      !['Read Later', 'Inspiration', 'Development', 'Resources', 'Unsorted'].includes(g.name) && (
+                        <option key={g.name} value={g.name} className="bg-black text-cyber-cyan">{g.name}</option>
+                      )
                     ))}
-                    {!groups.some(g => g.name === 'Read Later') && <option value="Read Later" className="bg-black text-cyber-cyan">Read Later</option>}
-                    {!groups.some(g => g.name === 'Inspiration') && <option value="Inspiration" className="bg-black text-cyber-cyan">Inspiration</option>}
                   </select>
                 </div>
                 <div>
@@ -809,40 +1250,6 @@ export default function BookmarksPage() {
                     placeholder="New Group Name" 
                     className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
                   />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group Custom Color</label>
-                <div className="flex gap-2.5 pt-1">
-                  {(['cyan', 'pink', 'green', 'yellow'] as const).map((color) => {
-                    const colorClasses = {
-                      cyan: 'bg-cyber-cyan border-cyber-cyan text-black',
-                      pink: 'bg-cyber-pink border-cyber-pink text-black',
-                      green: 'bg-cyber-green border-cyber-green text-black',
-                      yellow: 'bg-cyber-yellow border-cyber-yellow text-black',
-                    }
-                    const borderClasses = {
-                      cyan: 'border-cyber-cyan/50 hover:border-cyber-cyan text-cyber-cyan bg-cyber-cyan/5',
-                      pink: 'border-cyber-pink/50 hover:border-cyber-pink text-cyber-pink bg-cyber-pink/5',
-                      green: 'border-cyber-green/50 hover:border-cyber-green text-cyber-green bg-cyber-green/5',
-                      yellow: 'border-cyber-yellow/50 hover:border-cyber-yellow text-cyber-yellow bg-cyber-yellow/5',
-                    }
-                    const isSelected = selectedColor === color
-                    return (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setSelectedColor(color)}
-                        className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center cursor-pointer ${
-                          isSelected ? `${colorClasses[color]} scale-110 shadow-[0_0_8px_rgba(255,255,255,0.45)]` : `bg-transparent ${borderClasses[color]}`
-                        }`}
-                        title={`Set group color to ${color}`}
-                      >
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
-                      </button>
-                    )
-                  })}
                 </div>
               </div>
 
@@ -867,10 +1274,10 @@ export default function BookmarksPage() {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* Edit Bookmark Modal */}
       {showEditModal && selectedBookmark && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-lg p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-pink bg-black">
+          <div className="cyber-card w-full max-w-lg p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-pink bg-black font-mono">
             <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyber-pink to-cyber-cyan" />
 
             <div className="flex items-center justify-between mb-5">
@@ -915,18 +1322,17 @@ export default function BookmarksPage() {
                   onChange={(e) => setFormDescription(e.target.value)}
                   placeholder="Write description notes..." 
                   rows={2}
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm resize-none"
+                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm resize-none font-sans"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Thumbnail Image URL</label>
+                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Reminder Date & Time</label>
                 <input 
-                  type="url"
-                  value={formImage}
-                  onChange={(e) => setFormImage(e.target.value)}
-                  placeholder="https://example.com/image.jpg" 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                  type="datetime-local"
+                  value={formRemindAt}
+                  onChange={(e) => setFormRemindAt(e.target.value)}
+                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm text-cyber-cyan bg-black"
                 />
               </div>
 
@@ -960,106 +1366,184 @@ export default function BookmarksPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group Custom Color</label>
-                <div className="flex gap-2.5 pt-1">
-                  {(['cyan', 'pink', 'green', 'yellow'] as const).map((color) => {
-                    const colorClasses = {
-                      cyan: 'bg-cyber-cyan border-cyber-cyan text-black',
-                      pink: 'bg-cyber-pink border-cyber-pink text-black',
-                      green: 'bg-cyber-green border-cyber-green text-black',
-                      yellow: 'bg-cyber-yellow border-cyber-yellow text-black',
-                    }
-                    const borderClasses = {
-                      cyan: 'border-cyber-cyan/50 hover:border-cyber-cyan text-cyber-cyan bg-cyber-cyan/5',
-                      pink: 'border-cyber-pink/50 hover:border-cyber-pink text-cyber-pink bg-cyber-pink/5',
-                      green: 'border-cyber-green/50 hover:border-cyber-green text-cyber-green bg-cyber-green/5',
-                      yellow: 'border-cyber-yellow/50 hover:border-cyber-yellow text-cyber-yellow bg-cyber-yellow/5',
-                    }
-                    const isSelected = selectedColor === color
-                    return (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setSelectedColor(color)}
-                        className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center cursor-pointer ${
-                          isSelected ? `${colorClasses[color]} scale-110 shadow-[0_0_8px_rgba(255,255,255,0.45)]` : `bg-transparent ${borderClasses[color]}`
-                        }`}
-                        title={`Set group color to ${color}`}
-                      >
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center pt-4 border-t border-cyber-cyan/15">
+              <div className="flex justify-end gap-3 pt-4 border-t border-cyber-cyan/15">
                 <button 
                   type="button" 
-                  onClick={() => {
-                    setBookmarkToDelete(selectedBookmark)
-                    setShowDeleteModal(true)
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-red-400 bg-red-955/20 hover:bg-red-955/40 border border-red-900/35 px-4 py-2.5 rounded cursor-pointer transition-all"
+                  onClick={() => setShowEditModal(false)}
+                  className="cyber-btn-secondary px-4 py-2.5 rounded text-xs"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete</span>
+                  Cancel
                 </button>
-
-                <div className="flex gap-2">
-                  <button 
-                    type="button" 
-                    onClick={() => setShowEditModal(false)}
-                    className="cyber-btn-secondary px-4 py-2.5 rounded text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={isSaving}
-                    className="cyber-btn-primary px-5 py-2.5 rounded text-xs font-bold"
-                  >
-                    {isSaving ? 'Updating...' : 'Save Changes'}
-                  </button>
-                </div>
+                <button 
+                  type="submit"
+                  disabled={isSaving}
+                  className="cyber-btn-primary px-5 py-2.5 rounded text-xs font-bold"
+                >
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && bookmarkToDelete && (
+      {/* Push to TickTick Modal */}
+      {showTickTickModal && bookmarkToPush && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-pink bg-black">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-cyber-pink" />
-            
-            <div className="flex items-center gap-3 text-cyber-pink font-mono text-xs font-bold uppercase tracking-widest mb-4">
-              <Trash2 className="w-4 h-4 animate-pulse" />
-              <span>Warning // System Purge</span>
+          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-[#617bfb] bg-black font-mono">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-[#617bfb]">
+                <span className="font-black text-lg">✓</span>
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">Push to TickTick Task</h3>
+              </div>
+              <button 
+                onClick={() => setShowTickTickModal(false)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <h3 className="text-sm font-mono font-bold text-white uppercase mb-2">Confirm Bookmark Deletion</h3>
-            <p className="text-xs text-slate-400 mb-6 font-sans leading-relaxed">
-              Are you sure you want to permanently delete <strong className="text-cyber-cyan break-all">{bookmarkToDelete.title}</strong>? This action cannot be undone.
-            </p>
+            {!ticktickConnected ? (
+              <div className="space-y-4 py-2 text-center">
+                <p className="text-xs text-slate-300 font-sans">
+                  Your TickTick account is not connected yet. Connect your account in Settings to push bookmarks as tasks.
+                </p>
+                <button
+                  onClick={() => { setShowTickTickModal(false); navigate('/settings'); }}
+                  className="cyber-btn-primary px-4 py-2 rounded text-xs font-bold uppercase"
+                >
+                  Open Settings
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-black/60 border border-white/10 p-3 rounded text-xs space-y-1">
+                  <span className="text-[10px] text-cyber-cyan font-bold block uppercase">Bookmark Title</span>
+                  <span className="text-white font-bold block truncate">{bookmarkToPush.title}</span>
+                </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-cyber-cyan/15 font-mono">
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 mb-1 block">Select TickTick Project</label>
+                  <select
+                    value={selectedTicktickProject}
+                    onChange={(e) => setSelectedTicktickProject(e.target.value)}
+                    className="w-full cyber-input rounded px-3 py-2.5 text-sm bg-black text-[#617bfb]"
+                  >
+                    {ticktickProjects.map((p) => (
+                      <option key={p.id} value={p.id} className="bg-black text-[#617bfb]">
+                        📁 {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 mb-1 block">Due Date (Optional)</label>
+                  <input
+                    type="date"
+                    value={ticktickDueDate}
+                    onChange={(e) => setTicktickDueDate(e.target.value)}
+                    className="w-full cyber-input rounded px-3.5 py-2.5 text-sm bg-black text-white"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setShowTickTickModal(false)}
+                    className="cyber-btn-secondary px-4 py-2 rounded text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmPushTickTick}
+                    disabled={isPushingTicktick}
+                    className="cyber-btn-primary px-5 py-2 rounded text-xs font-bold uppercase flex items-center gap-1.5"
+                  >
+                    {isPushingTicktick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Push Task</span>}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveModal && bookmarkToArchive && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-cyber-yellow bg-black font-mono">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-cyber-yellow">
+                <Archive className="w-5 h-5" />
+                <h3 className="text-sm font-bold uppercase text-white">Archive Bookmark</h3>
+              </div>
               <button 
-                type="button" 
-                onClick={() => { setShowDeleteModal(false); setBookmarkToDelete(null); }}
-                className="cyber-btn-secondary px-4 py-2.5 rounded text-xs"
+                onClick={() => setShowArchiveModal(false)}
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-slate-300 font-sans">
+                Move <strong>"{bookmarkToArchive.title}"</strong> to cold storage archive?
+              </p>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Archive Sub-Group (e.g. archive-dev, archive-fun)</label>
+                <input 
+                  type="text"
+                  value={archiveGroupInput}
+                  onChange={(e) => setArchiveGroupInput(e.target.value)}
+                  placeholder="archive-dev" 
+                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm text-cyber-yellow"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-cyber-yellow/20">
+                <button 
+                  type="button" 
+                  onClick={() => setShowArchiveModal(false)}
+                  className="cyber-btn-secondary px-4 py-2 rounded text-xs"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  onClick={confirmArchive}
+                  className="cyber-btn-primary px-5 py-2 rounded text-xs font-bold uppercase"
+                >
+                  Confirm Archive
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && bookmarkToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-mono">
+          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-red-500 bg-black">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-red-400 uppercase">Confirm Delete</h3>
+              <button onClick={() => setShowDeleteModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-300 mb-5 font-sans">
+              Permanently delete <strong>"{bookmarkToDelete.title}"</strong>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowDeleteModal(false)} className="cyber-btn-secondary px-4 py-2 rounded text-xs">
                 Cancel
               </button>
-              <button 
-                type="button"
-                onClick={confirmDelete}
-                className="flex items-center gap-1.5 text-xs text-red-400 bg-red-955/20 hover:bg-red-955/40 border border-red-900/35 px-5 py-2.5 rounded cursor-pointer transition-all active:scale-95 font-bold"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
+              <button onClick={confirmDelete} className="cyber-btn-danger px-5 py-2 rounded text-xs font-bold">
+                Delete
               </button>
             </div>
           </div>
@@ -1068,81 +1552,28 @@ export default function BookmarksPage() {
 
       {/* Edit Group Modal */}
       {showEditGroupModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-cyan bg-black">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyber-cyan to-cyber-pink" />
-
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white uppercase">Edit Folder Group</h3>
-              <button 
-                onClick={() => setShowEditGroupModal(false)}
-                className="text-cyber-pink hover:text-white cursor-pointer bg-white/5 rounded p-1 transition-colors"
-              >
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-mono">
+          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-cyber-cyan bg-black">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-white uppercase">Edit Group Name</h3>
+              <button onClick={() => setShowEditGroupModal(false)} className="text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
-
             <form onSubmit={handleEditGroupSubmit} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group Name</label>
-                <input 
-                  type="text"
-                  value={formGroupName}
-                  onChange={(e) => setFormGroupName(e.target.value)}
-                  placeholder="Group Name" 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group Custom Color</label>
-                <div className="flex gap-2.5 pt-1">
-                  {(['cyan', 'pink', 'green', 'yellow'] as const).map((color) => {
-                    const colorClasses = {
-                      cyan: 'bg-cyber-cyan border-cyber-cyan text-black',
-                      pink: 'bg-cyber-pink border-cyber-pink text-black',
-                      green: 'bg-cyber-green border-cyber-green text-black',
-                      yellow: 'bg-cyber-yellow border-cyber-yellow text-black',
-                    }
-                    const borderClasses = {
-                      cyan: 'border-cyber-cyan/50 hover:border-cyber-cyan text-cyber-cyan bg-cyber-cyan/5',
-                      pink: 'border-cyber-pink/50 hover:border-cyber-pink text-cyber-pink bg-cyber-pink/5',
-                      green: 'border-cyber-green/50 hover:border-cyber-green text-cyber-green bg-cyber-green/5',
-                      yellow: 'border-cyber-yellow/50 hover:border-cyber-yellow text-cyber-yellow bg-cyber-yellow/5',
-                    }
-                    const isSelected = formGroupColor === color
-                    return (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setFormGroupColor(color)}
-                        className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center cursor-pointer ${
-                          isSelected ? `${colorClasses[color]} scale-110 shadow-[0_0_8px_rgba(255,255,255,0.45)]` : `bg-transparent ${borderClasses[color]}`
-                        }`}
-                        title={`Set group color to ${color}`}
-                      >
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-cyber-cyan/15">
-                <button 
-                  type="button" 
-                  onClick={() => setShowEditGroupModal(false)}
-                  className="cyber-btn-secondary px-4 py-2.5 rounded text-xs"
-                >
+              <input
+                type="text"
+                value={formGroupName}
+                onChange={(e) => setFormGroupName(e.target.value)}
+                className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                required
+              />
+              <div className="flex justify-end gap-3 pt-3 border-t border-cyber-cyan/15">
+                <button type="button" onClick={() => setShowEditGroupModal(false)} className="cyber-btn-secondary px-4 py-2 rounded text-xs">
                   Cancel
                 </button>
-                <button 
-                  type="submit"
-                  disabled={isSavingGroup}
-                  className="cyber-btn-primary px-5 py-2.5 rounded text-xs font-bold"
-                >
-                  {isSavingGroup ? 'Saving...' : 'Save Changes'}
+                <button type="submit" disabled={isSavingGroup} className="cyber-btn-primary px-5 py-2 rounded text-xs font-bold">
+                  Save
                 </button>
               </div>
             </form>
