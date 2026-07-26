@@ -3,6 +3,8 @@ import { AuthProvider, useAuth } from './lib/auth.js'
 import LoginPage from './views/LoginPage.js'
 import BookmarksPage from './views/BookmarksPage.js'
 import ShareTargetPage from './views/ShareTargetPage.js'
+import SettingsPage from './views/SettingsPage.js'
+import ArchivePage from './views/ArchivePage.js'
 import { Loader2 } from 'lucide-react'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -43,6 +45,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ShareTargetPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/archive"
+            element={
+              <ProtectedRoute>
+                <ArchivePage />
               </ProtectedRoute>
             }
           />

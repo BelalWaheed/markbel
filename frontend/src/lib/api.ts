@@ -49,13 +49,29 @@ export const api = {
     return data as T
   },
 
-  async delete<T>(path: string): Promise<T> {
+  async patch<T>(path: string, body?: any): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: body ? JSON.stringify(body) : undefined
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Request failed')
+    return data as T
+  },
+
+  async delete<T>(path: string, body?: any): Promise<T> {
+    const opts: RequestInit = {
       method: 'DELETE',
       headers: getHeaders()
-    })
+    }
+    if (body) {
+      opts.body = JSON.stringify(body)
+    }
+    const res = await fetch(`${API_BASE}${path}`, opts)
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Request failed')
     return data as T
   }
 }
+
