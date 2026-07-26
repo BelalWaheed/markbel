@@ -3,9 +3,20 @@ import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
+import webpush from "web-push";
 import { connectToDatabase } from "./db.js";
 import User from "./models/User.js";
 import Bookmark from "./models/Bookmark.js";
+import PushSubscription from "./models/PushSubscription.js";
+import {
+  getTickTickAuthUrl,
+  exchangeCodeForTokens,
+  refreshTickTickToken,
+  listTickTickProjects,
+  getOrCreateMarkbelProject,
+  createTickTickTask,
+} from "./ticktick.js";
 import { authMiddleware, AuthRequest } from "./middleware/auth.js";
 
 dotenv.config();
@@ -15,8 +26,29 @@ const PORT = process.env.PORT || 3001;
 const SALT_ROUNDS = 10;
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_for_local_dev";
 
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+const VAPID_EMAIL = process.env.VAPID_EMAIL || "mailto:admin@markbel.app";
+const CRON_SECRET = process.env.CRON_SECRET || "fallback_cron_secret";
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  try {
+    webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  } catch (err) {
+    console.warn("[VAPID Setup Warning]:", err);
+  }
+}
+
 app.use(cors());
 app.use(express.json());
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Too many authentication attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DATABASE MIDDLEWARE (Ensure connected before any queries)
@@ -38,7 +70,7 @@ app.use(async (req, res, next) => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // POST /api/users/signup
-app.post("/api/users/signup", async (req, res) => {
+app.post("/api/users/signup", authLimiter, async (req, res) => {
   try {
     const { name, email, password, avatar } = req.body;
     if (!email || !name || !password) {
@@ -78,7 +110,7 @@ app.post("/api/users/signup", async (req, res) => {
 });
 
 // POST /api/users/login
-app.post("/api/users/login", async (req, res) => {
+app.post("/api/users/login", authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -101,6 +133,9 @@ app.post("/api/users/login", async (req, res) => {
     if (user.password.startsWith("$2a$") || user.password.startsWith("$2b$")) {
       isValid = bcrypt.compareSync(password, user.password);
     } else {
+      console.warn(
+        `[Security Warning] User ${user.email} logged in using legacy plaintext password. Upgrading to hash now...`
+      );
       isValid = user.password === password;
       if (isValid) {
         user.password = bcrypt.hashSync(password, SALT_ROUNDS);
@@ -198,7 +233,12 @@ app.get("/api/bookmarks/events", (req, res) => {
 // GET /api/bookmarks
 app.get("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const bookmarks = await Bookmark.find({ userId: req.userId }).lean();
+    const includeArchived = req.query.includeArchived === "true";
+    const query: any = { userId: req.userId };
+    if (!includeArchived) {
+      query.isArchived = { $ne: true };
+    }
+    const bookmarks = await Bookmark.find(query).lean();
     res.json(bookmarks);
   } catch (err: any) {
     console.error("[API Bookmarks GET] Error:", err);
@@ -209,7 +249,7 @@ app.get("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
 // POST /api/bookmarks
 app.post("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    let { title, url, description, image, group } = req.body;
+    let { title, url, description, image, group, isRead, readAt, isPinned, remindAt, isArchived, archiveGroup } = req.body;
     if (!url) {
       res.status(400).json({ error: "URL is required" });
       return;
@@ -241,6 +281,12 @@ app.post("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
       description: finalDescription,
       image: finalImage,
       group: group || "Unsorted",
+      isRead: Boolean(isRead),
+      readAt: readAt || "",
+      isPinned: Boolean(isPinned),
+      remindAt: remindAt || "",
+      isArchived: Boolean(isArchived),
+      archiveGroup: archiveGroup || "",
       userId: req.userId,
       id: req.body.id || crypto.randomUUID(),
       createdAt: req.body.createdAt || new Date().toISOString(),
@@ -509,6 +555,576 @@ app.delete("/api/bookmarks", authMiddleware, async (req: AuthRequest, res) => {
     notifyClients(req.userId!, "bookmark_deleted", { id });
   } catch (err: any) {
     console.error("[API Bookmarks DELETE] Error:", err);
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// BOOKMARK LIFECYCLE & DISCOVERY ROUTES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// GET /api/bookmarks/stats
+app.get("/api/bookmarks/stats", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const all = await Bookmark.find({ userId: req.userId, isArchived: { $ne: true } }).lean();
+    const total = all.length;
+    const unread = all.filter((b) => !b.isRead).length;
+    const read = total - unread;
+    const pinnedCount = all.filter((b) => b.isPinned).length;
+    
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const savedThisWeek = all.filter((b) => b.createdAt >= oneWeekAgo).length;
+
+    const archivedCount = await Bookmark.countDocuments({ userId: req.userId, isArchived: true });
+
+    res.json({ total, read, unread, savedThisWeek, pinnedCount, archivedCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// GET /api/bookmarks/due
+app.get("/api/bookmarks/due", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const now = new Date().toISOString();
+    const dueBookmarks = await Bookmark.find({
+      userId: req.userId,
+      isArchived: { $ne: true },
+      isRead: { $ne: true },
+      remindAt: { $ne: "", $lte: now },
+    }).lean();
+    res.json(dueBookmarks);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// GET /api/bookmarks/random
+app.get("/api/bookmarks/random", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const count = parseInt(req.query.count as string) || 3;
+    const unread = await Bookmark.find({
+      userId: req.userId,
+      isArchived: { $ne: true },
+      isRead: { $ne: true },
+    }).lean();
+
+    const shuffled = unread.sort(() => 0.5 - Math.random());
+    res.json(shuffled.slice(0, count));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// GET /api/bookmarks/archived
+app.get("/api/bookmarks/archived", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const archived = await Bookmark.find({ userId: req.userId, isArchived: true }).lean();
+    res.json(archived);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// PATCH /api/bookmarks/read?id=xxx
+app.patch("/api/bookmarks/read", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const id = req.query.id as string;
+    if (!id) {
+      res.status(400).json({ error: "Bookmark ID is required" });
+      return;
+    }
+    const bookmark = await Bookmark.findOne({ id, userId: req.userId });
+    if (!bookmark) {
+      res.status(404).json({ error: "Bookmark not found" });
+      return;
+    }
+    const newIsRead = req.body.isRead !== undefined ? req.body.isRead : !bookmark.isRead;
+    bookmark.isRead = newIsRead;
+    bookmark.readAt = newIsRead ? new Date().toISOString() : "";
+    bookmark.updatedAt = new Date().toISOString();
+    await bookmark.save();
+
+    res.json(bookmark.toJSON());
+    notifyClients(req.userId!, "bookmark_updated", bookmark.toJSON());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// PATCH /api/bookmarks/pin?id=xxx
+app.patch("/api/bookmarks/pin", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const id = req.query.id as string;
+    if (!id) {
+      res.status(400).json({ error: "Bookmark ID is required" });
+      return;
+    }
+    const bookmark = await Bookmark.findOne({ id, userId: req.userId });
+    if (!bookmark) {
+      res.status(404).json({ error: "Bookmark not found" });
+      return;
+    }
+    bookmark.isPinned = req.body.isPinned !== undefined ? req.body.isPinned : !bookmark.isPinned;
+    bookmark.updatedAt = new Date().toISOString();
+    await bookmark.save();
+
+    res.json(bookmark.toJSON());
+    notifyClients(req.userId!, "bookmark_updated", bookmark.toJSON());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// PATCH /api/bookmarks/archive?id=xxx
+app.patch("/api/bookmarks/archive", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const id = req.query.id as string;
+    if (!id) {
+      res.status(400).json({ error: "Bookmark ID is required" });
+      return;
+    }
+    const bookmark = await Bookmark.findOne({ id, userId: req.userId });
+    if (!bookmark) {
+      res.status(404).json({ error: "Bookmark not found" });
+      return;
+    }
+    bookmark.isArchived = true;
+    bookmark.archiveGroup = req.body.archiveGroup || bookmark.archiveGroup || "archive-general";
+    bookmark.updatedAt = new Date().toISOString();
+    await bookmark.save();
+
+    res.json(bookmark.toJSON());
+    notifyClients(req.userId!, "bookmark_updated", bookmark.toJSON());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// PATCH /api/bookmarks/unarchive?id=xxx
+app.patch("/api/bookmarks/unarchive", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const id = req.query.id as string;
+    if (!id) {
+      res.status(400).json({ error: "Bookmark ID is required" });
+      return;
+    }
+    const bookmark = await Bookmark.findOne({ id, userId: req.userId });
+    if (!bookmark) {
+      res.status(404).json({ error: "Bookmark not found" });
+      return;
+    }
+    bookmark.isArchived = false;
+    bookmark.archiveGroup = "";
+    bookmark.updatedAt = new Date().toISOString();
+    await bookmark.save();
+
+    res.json(bookmark.toJSON());
+    notifyClients(req.userId!, "bookmark_updated", bookmark.toJSON());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TICKTICK INTEGRATION ROUTES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// GET /api/integrations/ticktick/auth
+app.get("/api/integrations/ticktick/auth", authMiddleware, (req: AuthRequest, res) => {
+  const url = getTickTickAuthUrl(req.userId || "");
+  res.json({ url });
+});
+
+// GET /api/integrations/ticktick/callback
+app.get("/api/integrations/ticktick/callback", async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    if (!code) {
+      res.status(400).send("Authorization code missing");
+      return;
+    }
+
+    const { access_token, refresh_token, expires_in } = await exchangeCodeForTokens(code as string);
+    const expiresAt = Date.now() + expires_in * 1000;
+
+    let user;
+    if (state) {
+      user = await User.findOne({ id: state as string });
+    }
+    if (!user && req.headers.authorization) {
+      const token = req.headers.authorization.split(" ")[1];
+      const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+      user = await User.findOne({ id: decoded.id });
+    }
+
+    if (user) {
+      user.ticktickAccessToken = access_token;
+      user.ticktickRefreshToken = refresh_token;
+      user.ticktickTokenExpiresAt = expiresAt;
+
+      try {
+        const projId = await getOrCreateMarkbelProject(access_token);
+        user.ticktickDefaultProjectId = projId;
+      } catch (err) {
+        console.warn("[TickTick Callback] Project creation warning:", err);
+      }
+
+      await user.save();
+    }
+
+    res.send(`
+      <html>
+        <body style="background:#050508;color:#00f0ff;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;">
+          <h2>TICKTICK CONNECTED SUCCESSFULLY</h2>
+          <p>Redirecting to Markbel Settings...</p>
+          <script>
+            setTimeout(() => {
+              window.location.href = '/settings?ticktick=connected';
+            }, 1500);
+          </script>
+        </body>
+      </html>
+    `);
+  } catch (err: any) {
+    console.error("[TickTick Callback Error]:", err);
+    res.status(500).send("Failed to connect TickTick: " + err.message);
+  }
+});
+
+// DELETE /api/integrations/ticktick
+app.delete("/api/integrations/ticktick", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    await User.updateOne(
+      { id: req.userId },
+      {
+        $set: {
+          ticktickAccessToken: "",
+          ticktickRefreshToken: "",
+          ticktickTokenExpiresAt: 0,
+          ticktickDefaultProjectId: "",
+        },
+      }
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// GET /api/integrations/ticktick/status
+app.get("/api/integrations/ticktick/status", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const user = await User.findOne({ id: req.userId });
+    const isConnected = Boolean(user && user.ticktickAccessToken);
+    res.json({
+      connected: isConnected,
+      defaultProjectId: user?.ticktickDefaultProjectId || "",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// GET /api/integrations/ticktick/projects
+app.get("/api/integrations/ticktick/projects", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const user = await User.findOne({ id: req.userId });
+    if (!user || !user.ticktickAccessToken) {
+      res.status(400).json({ error: "TickTick not connected" });
+      return;
+    }
+
+    let token = user.ticktickAccessToken;
+    if (user.ticktickTokenExpiresAt && Date.now() > user.ticktickTokenExpiresAt - 60000) {
+      if (user.ticktickRefreshToken) {
+        const refreshed = await refreshTickTickToken(user.ticktickRefreshToken);
+        user.ticktickAccessToken = refreshed.access_token;
+        user.ticktickRefreshToken = refreshed.refresh_token;
+        user.ticktickTokenExpiresAt = Date.now() + refreshed.expires_in * 1000;
+        await user.save();
+        token = refreshed.access_token;
+      }
+    }
+
+    const projects = await listTickTickProjects(token);
+    res.json(projects);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// POST /api/integrations/ticktick/push
+app.post("/api/integrations/ticktick/push", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { bookmarkId, projectId, dueDate } = req.body;
+    if (!bookmarkId) {
+      res.status(400).json({ error: "bookmarkId is required" });
+      return;
+    }
+
+    const bookmark = await Bookmark.findOne({ id: bookmarkId, userId: req.userId });
+    if (!bookmark) {
+      res.status(404).json({ error: "Bookmark not found" });
+      return;
+    }
+
+    const user = await User.findOne({ id: req.userId });
+    if (!user || !user.ticktickAccessToken) {
+      res.status(400).json({ error: "TickTick account not connected" });
+      return;
+    }
+
+    let token = user.ticktickAccessToken;
+    if (user.ticktickTokenExpiresAt && Date.now() > user.ticktickTokenExpiresAt - 60000) {
+      if (user.ticktickRefreshToken) {
+        const refreshed = await refreshTickTickToken(user.ticktickRefreshToken);
+        user.ticktickAccessToken = refreshed.access_token;
+        user.ticktickRefreshToken = refreshed.refresh_token;
+        user.ticktickTokenExpiresAt = Date.now() + refreshed.expires_in * 1000;
+        await user.save();
+        token = refreshed.access_token;
+      }
+    }
+
+    let targetProjectId = projectId || user.ticktickDefaultProjectId;
+    if (!targetProjectId) {
+      targetProjectId = await getOrCreateMarkbelProject(token);
+      user.ticktickDefaultProjectId = targetProjectId;
+      await user.save();
+    }
+
+    const taskContent = `URL: ${bookmark.url}\n\nGroup: ${bookmark.group}\n${bookmark.description ? "Description: " + bookmark.description : ""}`;
+    const task = await createTickTickTask(token, {
+      title: `[Bookmark] ${bookmark.title}`,
+      content: taskContent,
+      projectId: targetProjectId,
+      dueDate: dueDate || bookmark.remindAt || undefined,
+    });
+
+    res.json({ success: true, task });
+  } catch (err: any) {
+    console.error("[TickTick Push Error]:", err);
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// WEB PUSH & NOTIFICATIONS ROUTES (CRON TRIGGERED)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// GET /api/push/vapid-key
+app.get("/api/push/vapid-key", (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// POST /api/push/subscribe
+app.post("/api/push/subscribe", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { endpoint, keys, deviceLabel } = req.body;
+    if (!endpoint || !keys) {
+      res.status(400).json({ error: "Endpoint and keys are required" });
+      return;
+    }
+
+    await PushSubscription.updateOne(
+      { userId: req.userId, endpoint },
+      {
+        $set: {
+          id: crypto.randomUUID(),
+          userId: req.userId,
+          endpoint,
+          keys,
+          deviceLabel: deviceLabel || "Web Client",
+          createdAt: new Date().toISOString(),
+        },
+      },
+      { upsert: true }
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// DELETE /api/push/unsubscribe
+app.delete("/api/push/unsubscribe", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (endpoint) {
+      await PushSubscription.deleteOne({ userId: req.userId, endpoint });
+    } else {
+      await PushSubscription.deleteMany({ userId: req.userId });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// Helper: send push payload safely
+async function sendPushNotificationSafely(sub: any, payload: any) {
+  try {
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+    await webpush.sendNotification(
+      {
+        endpoint: sub.endpoint,
+        keys: sub.keys,
+      },
+      JSON.stringify(payload)
+    );
+  } catch (err: any) {
+    if (err.statusCode === 410 || err.statusCode === 404) {
+      await PushSubscription.deleteOne({ endpoint: sub.endpoint });
+    } else {
+      console.warn("[Push Notification Error]:", err.message);
+    }
+  }
+}
+
+// POST /api/push/send-test (1-Click Test Push Notification)
+app.post("/api/push/send-test", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const subscriptions = await PushSubscription.find({ userId: req.userId }).lean();
+    if (subscriptions.length === 0) {
+      res.status(400).json({ error: "No push subscriptions found for your account. Enable push notifications first!" });
+      return;
+    }
+
+    const payload = {
+      title: "Markbel Push Test 🔖",
+      body: "Instant Push Notification test successful! Notifications are working on this device.",
+      url: "/",
+    };
+
+    let count = 0;
+    for (const sub of subscriptions) {
+      await sendPushNotificationSafely(sub, payload);
+      count++;
+    }
+
+    res.json({ success: true, sent: count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// POST /api/notifications/digest (Triggered by cron-job.org)
+app.post("/api/notifications/digest", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const secretQuery = req.query.secret;
+    const isAuthorized =
+      (authHeader && authHeader === `Bearer ${CRON_SECRET}`) ||
+      secretQuery === CRON_SECRET;
+
+    if (!isAuthorized) {
+      res.status(403).json({ error: "Unauthorized cron trigger" });
+      return;
+    }
+
+    const subscriptions = await PushSubscription.find().lean();
+    let sentCount = 0;
+
+    const userSubsMap = new Map<string, any[]>();
+    subscriptions.forEach((sub) => {
+      const list = userSubsMap.get(sub.userId) || [];
+      list.push(sub);
+      userSubsMap.set(sub.userId, list);
+    });
+
+    for (const [userId, subs] of userSubsMap.entries()) {
+      const unreadCount = await Bookmark.countDocuments({
+        userId,
+        isArchived: { $ne: true },
+        isRead: { $ne: true },
+      });
+
+      if (unreadCount === 0) continue;
+
+      const now = new Date().toISOString();
+      const dueCount = await Bookmark.countDocuments({
+        userId,
+        isArchived: { $ne: true },
+        isRead: { $ne: true },
+        remindAt: { $ne: "", $lte: now },
+      });
+
+      let bodyText = `You have ${unreadCount} unread bookmark${unreadCount > 1 ? "s" : ""}.`;
+      if (dueCount > 0) {
+        bodyText += ` ${dueCount} due today!`;
+      }
+
+      const payload = {
+        title: "Markbel Daily Digest 🔖",
+        body: bodyText,
+        url: "/",
+      };
+
+      for (const sub of subs) {
+        await sendPushNotificationSafely(sub, payload);
+        sentCount++;
+      }
+    }
+
+    res.json({ success: true, notificationsSent: sentCount });
+  } catch (err: any) {
+    console.error("[Cron Digest Error]:", err);
+    res.status(500).json({ error: err.message || "Internal Server Error" });
+  }
+});
+
+// POST /api/notifications/due-check (Triggered by cron-job.org every 30m)
+app.post("/api/notifications/due-check", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const secretQuery = req.query.secret;
+    const isAuthorized =
+      (authHeader && authHeader === `Bearer ${CRON_SECRET}`) ||
+      secretQuery === CRON_SECRET;
+
+    if (!isAuthorized) {
+      res.status(403).json({ error: "Unauthorized cron trigger" });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const subscriptions = await PushSubscription.find().lean();
+    let sentCount = 0;
+
+    const userSubsMap = new Map<string, any[]>();
+    subscriptions.forEach((sub) => {
+      const list = userSubsMap.get(sub.userId) || [];
+      list.push(sub);
+      userSubsMap.set(sub.userId, list);
+    });
+
+    for (const [userId, subs] of userSubsMap.entries()) {
+      const dueBookmarks = await Bookmark.find({
+        userId,
+        isArchived: { $ne: true },
+        isRead: { $ne: true },
+        remindAt: { $ne: "", $lte: now },
+      }).lean();
+
+      if (dueBookmarks.length === 0) continue;
+
+      const payload = {
+        title: "Markbel Due Reminders ⏰",
+        body: `You have ${dueBookmarks.length} bookmark${dueBookmarks.length > 1 ? "s" : ""} waiting to be read!`,
+        url: "/?filter=due",
+      };
+
+      for (const sub of subs) {
+        await sendPushNotificationSafely(sub, payload);
+        sentCount++;
+      }
+    }
+
+    res.json({ success: true, notificationsSent: sentCount });
+  } catch (err: any) {
+    console.error("[Cron Due Check Error]:", err);
     res.status(500).json({ error: err.message || "Internal Server Error" });
   }
 });
