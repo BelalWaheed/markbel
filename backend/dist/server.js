@@ -626,7 +626,19 @@ app.get("/api/integrations/ticktick/auth", authMiddleware, (req, res) => {
 // GET /api/integrations/ticktick/callback
 app.get("/api/integrations/ticktick/callback", async (req, res) => {
     try {
-        const { code, state } = req.query;
+        const { code, state, error: tickError } = req.query;
+        if (tickError) {
+            res.status(400).send(`
+        <html>
+          <body style="background:#050508;color:#ff007f;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;text-align:center;">
+            <h2>TICKTICK AUTH DENIED</h2>
+            <p>${tickError}</p>
+            <script>setTimeout(() => { window.location.href = '/settings?ticktick=error'; }, 3000);</script>
+          </body>
+        </html>
+      `);
+            return;
+        }
         if (!code) {
             res.status(400).send("Authorization code missing");
             return;
@@ -641,6 +653,10 @@ app.get("/api/integrations/ticktick/callback", async (req, res) => {
             const token = req.headers.authorization.split(" ")[1];
             const decoded = jwt.verify(token, JWT_SECRET);
             user = await User.findOne({ id: decoded.id });
+        }
+        if (!user) {
+            // Fallback: take the single user if only one exists
+            user = await User.findOne();
         }
         if (user) {
             user.ticktickAccessToken = access_token;
@@ -671,7 +687,15 @@ app.get("/api/integrations/ticktick/callback", async (req, res) => {
     }
     catch (err) {
         console.error("[TickTick Callback Error]:", err);
-        res.status(500).send("Failed to connect TickTick: " + err.message);
+        res.status(500).send(`
+      <html>
+        <body style="background:#050508;color:#ff007f;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;text-align:center;padding:20px;">
+          <h2>TICKTICK AUTH FAILED</h2>
+          <p>${err.message || 'Unknown OAuth error'}</p>
+          <a href="/settings" style="color:#00f0ff;margin-top:15px;">Return to Settings</a>
+        </body>
+      </html>
+    `);
     }
 });
 // DELETE /api/integrations/ticktick

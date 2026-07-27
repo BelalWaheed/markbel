@@ -22,30 +22,38 @@ export async function exchangeCodeForTokens(code: string): Promise<{
   refresh_token: string
   expires_in: number
 }> {
+  const clientId = process.env.TICKTICK_CLIENT_ID || CLIENT_ID
+  const clientSecret = process.env.TICKTICK_CLIENT_SECRET || CLIENT_SECRET
+  const redirectUri = process.env.TICKTICK_REDIRECT_URI || REDIRECT_URI
+
   const params = new URLSearchParams()
-  params.append('client_id', CLIENT_ID)
-  params.append('client_secret', CLIENT_SECRET)
+  params.append('client_id', clientId)
+  params.append('client_secret', clientSecret)
   params.append('code', code)
   params.append('grant_type', 'authorization_code')
-  params.append('redirect_uri', REDIRECT_URI)
+  params.append('redirect_uri', redirectUri)
+
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
 
   const res = await fetch('https://ticktick.com/oauth/token', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded'
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basicAuth}`
     },
     body: params.toString()
   })
 
   const data = await res.json()
   if (!res.ok) {
+    console.error('[TickTick Token Exchange Error Data]:', data)
     throw new Error(data.error_description || data.error || 'Failed to exchange authorization code for tokens')
   }
 
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token || '',
-    expires_in: data.expires_in || 604800 // default 7 days
+    expires_in: data.expires_in || 604800
   }
 }
 
@@ -54,16 +62,22 @@ export async function refreshTickTickToken(refreshToken: string): Promise<{
   refresh_token: string
   expires_in: number
 }> {
+  const clientId = process.env.TICKTICK_CLIENT_ID || CLIENT_ID
+  const clientSecret = process.env.TICKTICK_CLIENT_SECRET || CLIENT_SECRET
+
   const params = new URLSearchParams()
-  params.append('client_id', CLIENT_ID)
-  params.append('client_secret', CLIENT_SECRET)
+  params.append('client_id', clientId)
+  params.append('client_secret', clientSecret)
   params.append('grant_type', 'refresh_token')
   params.append('refresh_token', refreshToken)
+
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
 
   const res = await fetch('https://ticktick.com/oauth/token', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded'
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basicAuth}`
     },
     body: params.toString()
   })

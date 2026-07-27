@@ -62,12 +62,18 @@ export default function SettingsPage() {
 
   // Check Push status
   useEffect(() => {
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-      setPushSupported(true)
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.pushManager.getSubscription().then((sub) => {
-          setPushSubscribed(Boolean(sub))
-        })
+    const isSupported = 'serviceWorker' in navigator && ('PushManager' in window || 'Notification' in window)
+    setPushSupported(isSupported)
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        if (reg.pushManager) {
+          reg.pushManager.getSubscription().then((sub) => {
+            setPushSubscribed(Boolean(sub))
+          })
+        }
+      }).catch((err) => {
+        console.warn('Service Worker registration check:', err)
       })
     }
     loadTicktickStatus()
