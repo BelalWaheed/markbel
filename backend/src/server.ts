@@ -16,6 +16,7 @@ import {
   listTickTickProjects,
   getOrCreateMarkbelProject,
   createTickTickTask,
+  getTickTickTask,
 } from "./ticktick.js";
 import { authMiddleware, AuthRequest } from "./middleware/auth.js";
 
@@ -927,6 +928,10 @@ app.post("/api/integrations/ticktick/push", authMiddleware, async (req: AuthRequ
       dueDate: dueDate || bookmark.remindAt || undefined,
     });
 
+    bookmark.ticktickTaskId = task.id;
+    bookmark.ticktickProjectId = targetProjectId;
+    await bookmark.save();
+
     res.json({ success: true, task });
   } catch (err: any) {
     console.error("[TickTick Push Error]:", err);
@@ -1144,6 +1149,56 @@ app.post("/api/notifications/due-check", async (req, res) => {
       for (const sub of subs) {
         await sendPushNotificationSafely(sub, payload);
         sentCount++;
+      }
+    }
+
+    // --- TickTick Two-Way Sync (Background) ---
+    const usersWithTickTick = await User.find({ ticktickAccessToken: { $ne: "" } }).lean();
+    for (const user of usersWithTickTick) {
+      if (!user.ticktickAccessToken) continue;
+
+      let token = user.ticktickAccessToken;
+      if (user.ticktickTokenExpiresAt && Date.now() > user.ticktickTokenExpiresAt - 60000) {
+        if (user.ticktickRefreshToken) {
+          try {
+            const refreshed = await refreshTickTickToken(user.ticktickRefreshToken);
+            await User.updateOne(
+              { id: user.id },
+              {
+                $set: {
+                  ticktickAccessToken: refreshed.access_token,
+                  ticktickRefreshToken: refreshed.refresh_token,
+                  ticktickTokenExpiresAt: Date.now() + refreshed.expires_in * 1000,
+                },
+              }
+            );
+            token = refreshed.access_token;
+          } catch (e) {
+            console.error("[TickTick Background Refresh Error]:", e);
+            continue;
+          }
+        }
+      }
+
+      const syncBookmarks = await Bookmark.find({
+        userId: user.id,
+        isRead: { $ne: true },
+        ticktickTaskId: { $exists: true, $ne: "" },
+        ticktickProjectId: { $exists: true, $ne: "" },
+      });
+
+      for (const bm of syncBookmarks) {
+        try {
+          const taskData = await getTickTickTask(token, bm.ticktickProjectId!, bm.ticktickTaskId!);
+          // TickTick status 2 is completed, status -1 is archived/deleted
+          if (taskData && taskData.status !== 0) {
+            bm.isRead = true;
+            bm.readAt = new Date().toISOString();
+            await bm.save();
+          }
+        } catch (e) {
+          console.error(`[TickTick Sync Error for Task ${bm.ticktickTaskId}]:`, e);
+        }
       }
     }
 

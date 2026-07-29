@@ -13,6 +13,8 @@ const BookmarkSchema = new Schema({
     remindAt: { type: String, default: '' },
     isArchived: { type: Boolean, default: false },
     archiveGroup: { type: String, default: '' },
+    ticktickTaskId: { type: String, default: '' },
+    ticktickProjectId: { type: String, default: '' },
     createdAt: { type: String, required: true },
     updatedAt: { type: String, required: true }
 }, {

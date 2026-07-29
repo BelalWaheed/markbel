@@ -14,27 +14,57 @@ export function getTickTickAuthUrl(state = '') {
     return `https://ticktick.com/oauth/authorize?${params.toString()}`;
 }
 export async function exchangeCodeForTokens(code) {
-    const clientId = process.env.TICKTICK_CLIENT_ID || CLIENT_ID;
-    const clientSecret = process.env.TICKTICK_CLIENT_SECRET || CLIENT_SECRET;
-    const redirectUri = process.env.TICKTICK_REDIRECT_URI || REDIRECT_URI;
-    const params = new URLSearchParams();
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
-    params.append('code', code);
-    params.append('grant_type', 'authorization_code');
-    params.append('redirect_uri', redirectUri);
+    const clientId = (process.env.TICKTICK_CLIENT_ID || CLIENT_ID || '').trim();
+    const clientSecret = (process.env.TICKTICK_CLIENT_SECRET || CLIENT_SECRET || '').trim();
+    const redirectUri = (process.env.TICKTICK_REDIRECT_URI || REDIRECT_URI || '').trim();
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-    const res = await fetch('https://ticktick.com/oauth/token', {
+    // Method 1: Standard RFC 6749 Authorization Basic Header
+    const params1 = new URLSearchParams();
+    params1.append('code', code);
+    params1.append('grant_type', 'authorization_code');
+    params1.append('redirect_uri', redirectUri);
+    let res = await fetch('https://ticktick.com/oauth/token', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Authorization': `Basic ${basicAuth}`
         },
-        body: params.toString()
+        body: params1.toString()
     });
-    const data = await res.json();
+    let resText = await res.text();
+    let data;
+    try {
+        data = JSON.parse(resText);
+    }
+    catch (e) {
+        data = { error: 'Invalid response from TickTick', error_description: resText.slice(0, 150) };
+    }
+    // Method 2 Fallback: Form body parameters
     if (!res.ok) {
-        console.error('[TickTick Token Exchange Error Data]:', data);
+        console.warn('[TickTick Auth Method 1 Failed, trying Method 2]:', data);
+        const params2 = new URLSearchParams();
+        params2.append('client_id', clientId);
+        params2.append('client_secret', clientSecret);
+        params2.append('code', code);
+        params2.append('grant_type', 'authorization_code');
+        params2.append('redirect_uri', redirectUri);
+        res = await fetch('https://ticktick.com/oauth/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params2.toString()
+        });
+        let resText2 = await res.text();
+        try {
+            data = JSON.parse(resText2);
+        }
+        catch (e) {
+            data = { error: 'Invalid response from TickTick', error_description: resText2.slice(0, 150) };
+        }
+    }
+    if (!res.ok) {
+        console.error('[TickTick Token Exchange Failed Final]:', data);
         throw new Error(data.error_description || data.error || 'Failed to exchange authorization code for tokens');
     }
     return {
@@ -44,23 +74,43 @@ export async function exchangeCodeForTokens(code) {
     };
 }
 export async function refreshTickTickToken(refreshToken) {
-    const clientId = process.env.TICKTICK_CLIENT_ID || CLIENT_ID;
-    const clientSecret = process.env.TICKTICK_CLIENT_SECRET || CLIENT_SECRET;
-    const params = new URLSearchParams();
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
-    params.append('grant_type', 'refresh_token');
-    params.append('refresh_token', refreshToken);
+    const clientId = (process.env.TICKTICK_CLIENT_ID || CLIENT_ID || '').trim();
+    const clientSecret = (process.env.TICKTICK_CLIENT_SECRET || CLIENT_SECRET || '').trim();
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-    const res = await fetch('https://ticktick.com/oauth/token', {
+    const params1 = new URLSearchParams();
+    params1.append('grant_type', 'refresh_token');
+    params1.append('refresh_token', refreshToken);
+    let res = await fetch('https://ticktick.com/oauth/token', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Authorization': `Basic ${basicAuth}`
         },
-        body: params.toString()
+        body: params1.toString()
     });
-    const data = await res.json();
+    let resText = await res.text();
+    let data;
+    try {
+        data = JSON.parse(resText);
+    }
+    catch (e) {
+        data = { error: 'Invalid response from TickTick', error_description: resText.slice(0, 150) };
+    }
+    if (!res.ok) {
+        const params2 = new URLSearchParams();
+        params2.append('client_id', clientId);
+        params2.append('client_secret', clientSecret);
+        params2.append('grant_type', 'refresh_token');
+        params2.append('refresh_token', refreshToken);
+        res = await fetch('https://ticktick.com/oauth/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params2.toString()
+        });
+        data = await res.json();
+    }
     if (!res.ok) {
         throw new Error(data.error_description || data.error || 'Failed to refresh TickTick token');
     }
@@ -133,6 +183,19 @@ export async function createTickTickTask(accessToken, task) {
     if (!res.ok) {
         const errorText = await res.text();
         throw new Error(`Failed to create TickTick task: ${errorText}`);
+    }
+    return await res.json();
+}
+export async function getTickTickTask(accessToken, projectId, taskId) {
+    const res = await fetch(`https://api.ticktick.com/open/v1/project/${projectId}/task/${taskId}`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${accessToken}`
+        }
+    });
+    if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Failed to get TickTick task: ${errorText}`);
     }
     return await res.json();
 }
