@@ -93,42 +93,36 @@ export default function ArchivePage() {
   }
 
   return (
-    <div className="space-y-8 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24 min-h-screen relative overflow-x-hidden font-mono text-slate-200">
-      {/* Cyber Grid & Scanline Backplates */}
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-grid" />
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-scanlines opacity-20" />
-
+    <div className="space-y-8 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24 min-h-screen relative overflow-x-hidden text-[var(--color-text-primary)]">
       {/* Header */}
-      <header className="cyber-card px-5 py-4 rounded flex items-center justify-between shadow-2xl relative z-10 border border-cyber-yellow/35 bg-black/90">
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyber-yellow via-cyber-pink to-cyber-cyan" />
-
+      <header className="studio-card px-5 py-4 flex items-center justify-between z-10 border border-[var(--color-border-default)]">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="cyber-btn-secondary p-2 rounded text-cyber-yellow hover:text-white transition-colors"
+            className="btn-secondary p-2 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
             title="Back to Vault"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <MarkbelLogo size={32} />
           <div>
-            <h1 className="text-lg font-black tracking-widest text-white uppercase flex items-center gap-2">
-              <Archive className="w-4 h-4 text-cyber-yellow" />
+            <h1 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
+              <Archive className="w-4 h-4 text-amber-500" />
               <span>Bookmarks Archive</span>
             </h1>
-            <p className="text-[9px] text-cyber-yellow font-bold tracking-widest uppercase">Cold Storage Repository</p>
+            <p className="text-[10px] text-[var(--color-text-muted)] font-semibold tracking-wide uppercase">Cold Storage Repository</p>
           </div>
         </div>
 
         {/* Search */}
-        <div className="flex items-center gap-2 bg-black/80 border border-cyber-yellow/30 rounded px-3 py-1.5 w-48 sm:w-64">
-          <Search className="w-3.5 h-3.5 text-cyber-yellow/60" />
+        <div className="flex items-center gap-2 bg-white border border-[var(--color-border-default)] rounded-md px-3 py-1.5 w-48 sm:w-64 shadow-sm">
+          <Search className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search archive..."
-            className="bg-transparent text-xs text-cyber-yellow placeholder-cyber-yellow/30 outline-none w-full font-bold"
+            className="bg-transparent text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none w-full"
           />
         </div>
       </header>
@@ -137,10 +131,10 @@ export default function ArchivePage() {
       <section className="flex flex-wrap items-center gap-2 relative z-10">
         <button
           onClick={() => setActiveArchiveGroup(null)}
-          className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all ${
+          className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
             activeArchiveGroup === null
-              ? 'bg-cyber-yellow text-black border border-cyber-yellow shadow-[0_0_10px_rgba(255,230,0,0.3)]'
-              : 'bg-black/80 text-slate-300 border border-white/10 hover:border-cyber-yellow'
+              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+              : 'bg-white text-[var(--color-text-muted)] border border-[var(--color-border-default)] hover:border-amber-300'
           }`}
         >
           All Archive ({archivedBookmarks.length})
@@ -150,10 +144,10 @@ export default function ArchivePage() {
           <button
             key={g.name}
             onClick={() => setActiveArchiveGroup(g.name)}
-            className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all ${
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
               activeArchiveGroup === g.name
-                ? 'bg-cyber-yellow text-black border border-cyber-yellow shadow-[0_0_10px_rgba(255,230,0,0.3)]'
-                : 'bg-black/80 text-slate-300 border border-white/10 hover:border-cyber-yellow'
+                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                : 'bg-white text-[var(--color-text-muted)] border border-[var(--color-border-default)] hover:border-amber-300'
             }`}
           >
             📁 {g.name} ({g.count})
@@ -164,15 +158,15 @@ export default function ArchivePage() {
       {/* Content */}
       <main className="relative z-10">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-cyber-yellow" />
-            <span className="text-[10px] tracking-widest text-cyber-yellow/50 uppercase">Accessing Archive Vault...</span>
+          <div className="flex flex-col items-center justify-center py-24 text-[var(--color-text-muted)] gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-accent)]" />
+            <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Accessing Archive Vault...</span>
           </div>
         ) : filteredBookmarks.length === 0 ? (
-          <div className="text-center py-20 cyber-card rounded border-dashed border-cyber-yellow/20 max-w-md mx-auto bg-black/80 space-y-3">
-            <Archive className="w-12 h-12 mx-auto text-cyber-yellow/40" />
-            <h3 className="text-sm font-bold text-white uppercase">No Archived Bookmarks</h3>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto font-sans">
+          <div className="text-center py-20 studio-card border-dashed border-[var(--color-border-default)] max-w-md mx-auto space-y-3">
+            <Archive className="w-12 h-12 mx-auto text-[var(--color-text-muted)]" />
+            <h3 className="text-sm font-bold text-[var(--color-text-primary)] uppercase">No Archived Bookmarks</h3>
+            <p className="text-sm text-[var(--color-text-muted)] max-w-xs mx-auto">
               Bookmarks you archive will be safely stored here in custom sub-groups without cluttering your main vault.
             </p>
           </div>
@@ -181,41 +175,51 @@ export default function ArchivePage() {
             {filteredBookmarks.map((b) => (
               <div
                 key={b.id}
-                className="cyber-card rounded overflow-hidden flex flex-col justify-between border border-cyber-yellow/20 bg-black/85 relative group"
+                className="studio-card flex flex-col justify-between group overflow-hidden"
               >
+                {b.image && (
+                  <div className="relative h-32 sm:h-40 overflow-hidden bg-[var(--color-bg-element)] border-b border-[var(--color-border-default)]">
+                    <img 
+                      src={b.image} 
+                      alt={b.title} 
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      onError={(e) => { e.currentTarget.style.display = 'none' }}
+                    />
+                  </div>
+                )}
                 <div className="p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-cyber-yellow bg-black border border-cyber-yellow/30 px-2 py-0.5">
+                    <span className="text-[10px] font-bold tracking-wide text-[var(--color-text-primary)] bg-[var(--color-bg-element)] border border-[var(--color-border-default)] px-2 py-0.5 rounded">
                       📁 {b.archiveGroup || 'archive-general'}
                     </span>
-                    <span className="text-[9px] text-slate-500 font-bold uppercase">
+                    <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase">
                       Originally in: {b.group || 'Unsorted'}
                     </span>
                   </div>
 
-                  <h4 className="font-bold text-sm text-white line-clamp-2 leading-snug">
+                  <h4 className="font-bold text-sm text-[var(--color-text-primary)] line-clamp-2 leading-snug">
                     {b.title}
                   </h4>
 
                   {b.description && (
-                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed font-sans">
+                    <p className="text-xs text-[var(--color-text-muted)] line-clamp-2 leading-relaxed">
                       {b.description}
                     </p>
                   )}
 
-                  <div className="flex items-center gap-1 text-[10px] text-cyber-cyan truncate pt-1">
-                    <Sparkles className="w-3 h-3 text-cyber-yellow shrink-0" />
+                  <div className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] truncate pt-1 font-semibold">
+                    <LinkIcon className="w-3 h-3 text-[var(--color-text-muted)] shrink-0" />
                     <span className="truncate">{getDomain(b.url)}</span>
                   </div>
                 </div>
 
                 {/* Footer */}
-                <div className="px-4 py-3 border-t border-cyber-yellow/15 flex items-center justify-between bg-black/60">
+                <div className="px-4 py-3 border-t border-[var(--color-border-default)] bg-[var(--color-bg-element)] flex items-center justify-between">
                   <a
                     href={b.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-xs text-cyber-cyan hover:underline flex items-center gap-1 font-bold"
+                    className="text-xs text-[var(--color-accent)] hover:underline flex items-center gap-1 font-bold"
                   >
                     <span>Visit Link</span>
                     <ExternalLink className="w-3 h-3" />
@@ -224,7 +228,7 @@ export default function ArchivePage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleUnarchive(b.id)}
-                      className="cyber-btn-primary text-[10px] px-2.5 py-1 rounded flex items-center gap-1 font-bold"
+                      className="btn-primary text-xs px-2.5 py-1 flex items-center gap-1 font-bold"
                       title="Restore to Main Vault"
                     >
                       <RotateCcw className="w-3 h-3" />
@@ -232,10 +236,10 @@ export default function ArchivePage() {
                     </button>
                     <button
                       onClick={() => handleDelete(b.id)}
-                      className="text-slate-400 hover:text-red-400 p-1 rounded"
+                      className="text-[var(--color-text-muted)] hover:text-[var(--color-status-error)] p-1 rounded transition-colors"
                       title="Delete Permanently"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>

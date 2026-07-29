@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth.js'
+import { ToastProvider } from './components/Toast.js'
 import LoginPage from './views/LoginPage.js'
 import BookmarksPage from './views/BookmarksPage.js'
 import ShareTargetPage from './views/ShareTargetPage.js'
@@ -12,9 +13,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#050508] gap-3 font-mono">
-        <Loader2 className="w-8 h-8 animate-spin text-cyber-cyan" />
-        <span className="text-[10px] font-bold tracking-widest text-cyber-cyan/50 uppercase">TUNNELING_MARKBEL_SYS_RESOURCES...</span>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-bg-main)] gap-3 font-sans">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--color-accent)]" />
+        <span className="text-xs font-semibold tracking-wide text-[var(--color-text-muted)] uppercase">Loading Markbel...</span>
       </div>
     )
   }
@@ -29,44 +30,46 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <BookmarksPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/share-target"
-            element={
-              <ProtectedRoute>
-                <ShareTargetPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <SettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/archive"
-            element={
-              <ProtectedRoute>
-                <ArchivePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+      <ToastProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <BookmarksPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/share-target"
+              element={
+                <ProtectedRoute>
+                  <ShareTargetPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <SettingsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/archive"
+              element={
+                <ProtectedRoute>
+                  <ArchivePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
+      </ToastProvider>
     </AuthProvider>
   )
 }

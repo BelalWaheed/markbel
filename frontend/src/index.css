@@ -1,138 +1,144 @@
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-background: #050508;
-  --color-card: rgba(7, 7, 15, 0.75);
-  --color-card-hover: rgba(14, 14, 30, 0.85);
-  --color-border: rgba(0, 240, 255, 0.22);
-  --color-border-hover: rgba(255, 0, 127, 0.55);
+  --color-bg-main: #f0efea;
+  --color-bg-surface: #f6f5f0;
+  --color-bg-elevated: #ffffff;
+  --color-bg-element: #ecebe5;
+  --color-bg-hover: #f2f2f2;
+  --color-bg-active: #e8e8e8;
   
-  --color-accent: #00f0ff;
-  --color-accent-hover: #ff007f;
-  --color-cyber-cyan: #00f0ff;
-  --color-cyber-pink: #ff007f;
-  --color-cyber-green: #39ff14;
-  --color-cyber-yellow: #ffe600;
+  --color-border-default: #ecebe5;
+  --color-border-focused: #005fb8;
   
-  --color-foreground: #f3f4f6;
-  --color-foreground-muted: #9ca3af;
+  --color-accent: #005fb8;
   
-  --font-sans: 'Plus Jakarta Sans', 'Inter', sans-serif;
-  --font-mono: 'Share Tech Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --color-text-primary: #3b3b3b;
+  --color-text-muted: #767676;
+  
+  --color-status-success: #107c10;
+  --color-status-error: #cd3131;
+  --color-status-warning: #bf8803;
+  
+  --font-sans: 'Geist', 'Inter', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* Scanlines and Cyber grid overlays */
-@utility cyber-grid {
-  background-image: 
-    linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px);
-  background-size: 25px 25px;
-  background-position: center;
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background-color: var(--color-bg-main);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
 }
 
-@utility cyber-scanlines {
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%, 
-    rgba(0, 0, 0, 0.35) 50%
-  );
-  background-size: 100% 4px;
-}
+/* Light Studio UI Utilities */
 
-/* Cyberpunk Digital Panels */
-@utility cyber-card {
-  background-color: var(--color-card);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.04);
-  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+@utility studio-card {
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   position: relative;
+  border-radius: 0.5rem;
   overflow: hidden;
 }
 
-@utility cyber-card-hover {
+@utility studio-card-hover {
   &:hover {
-    background-color: var(--color-card-hover);
-    border-color: var(--color-border-hover);
-    box-shadow: 0 0 25px rgba(255, 0, 127, 0.18), 0 0 10px rgba(0, 240, 255, 0.08);
-    transform: translateY(-3.5px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.03);
+    border-color: var(--color-bg-element);
+    transform: translateY(-2px);
   }
 }
 
-@utility cyber-input {
-  background-color: rgba(5, 5, 10, 0.7);
-  border: 1px solid rgba(0, 240, 255, 0.25);
-  color: var(--color-cyber-cyan);
+@utility studio-input {
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
   transition: all 0.2s ease-in-out;
   outline: none;
+  border-radius: 0.375rem;
   
   &:focus {
-    border-color: var(--color-cyber-pink);
-    background-color: rgba(10, 5, 20, 0.8);
-    box-shadow: 0 0 15px rgba(255, 0, 127, 0.25), inset 0 0 8px rgba(255, 0, 127, 0.1);
-    color: #ffffff;
+    border-color: var(--color-border-focused);
+    box-shadow: 0 0 0 2px rgba(0, 95, 184, 0.15);
+  }
+  
+  &::placeholder {
+    color: var(--color-text-muted);
   }
 }
 
-@utility cyber-btn-primary {
-  background: linear-gradient(135deg, var(--color-cyber-cyan) 0%, var(--color-cyber-pink) 100%);
-  color: #000000;
-  font-weight: bold;
-  letter-spacing: 0.03em;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
-  transition: all 0.2s ease;
-  cursor: pointer;
-  
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 0 25px rgba(255, 0, 127, 0.45), 0 0 15px rgba(0, 240, 255, 0.35);
-    filter: brightness(1.15);
-  }
-  
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-}
-
-@utility cyber-btn-secondary {
-  background-color: rgba(0, 240, 255, 0.05);
-  border: 1px solid rgba(0, 240, 255, 0.25);
-  color: var(--color-cyber-cyan);
+@utility btn-primary {
+  background-color: var(--color-accent);
+  color: #ffffff;
   font-weight: 500;
-  letter-spacing: 0.02em;
-  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
   cursor: pointer;
+  border-radius: 0.375rem;
   
   &:hover:not(:disabled) {
-    background-color: rgba(0, 240, 255, 0.12);
-    border-color: var(--color-cyber-pink);
-    color: var(--color-cyber-pink);
-    transform: translateY(-1.5px);
-    box-shadow: 0 0 12px rgba(255, 0, 127, 0.25);
+    background-color: #004d96;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 95, 184, 0.2);
   }
   
   &:active:not(:disabled) {
     transform: translateY(0);
+    background-color: #003e7a;
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 }
 
-@utility cyber-btn-danger {
-  background-color: rgba(239, 68, 68, 0.04);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #ef4444;
-  transition: all 0.2s ease;
+@utility btn-secondary {
+  background-color: var(--color-bg-element);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  transition: all 0.15s ease;
   cursor: pointer;
+  border-radius: 0.375rem;
   
   &:hover:not(:disabled) {
-    background-color: rgba(239, 68, 68, 0.12);
-    border-color: #f87171;
-    color: #f87171;
-    transform: translateY(-1.5px);
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+    background-color: var(--color-bg-hover);
+    border-color: #d8d7d1;
   }
   
   &:active:not(:disabled) {
-    transform: translateY(0);
+    background-color: var(--color-bg-active);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+@utility btn-danger {
+  background-color: rgba(205, 49, 49, 0.05);
+  border: 1px solid rgba(205, 49, 49, 0.2);
+  color: var(--color-status-error);
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border-radius: 0.375rem;
+  
+  &:hover:not(:disabled) {
+    background-color: rgba(205, 49, 49, 0.1);
+    border-color: rgba(205, 49, 49, 0.4);
+  }
+  
+  &:active:not(:disabled) {
+    background-color: rgba(205, 49, 49, 0.15);
   }
 }
 
@@ -145,44 +151,10 @@
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(0, 240, 255, 0.15);
+    background: rgba(100, 100, 100, 0.2);
     border-radius: 9999px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 0, 127, 0.35);
+    background: rgba(100, 100, 100, 0.4);
   }
-}
-
-body {
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans);
-  letter-spacing: -0.005em;
-}
-
-/* Pulsing cyber neon animations */
-@keyframes cyber-pulse {
-  0%, 100% {
-    opacity: 0.15;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.28;
-    transform: scale(1.08);
-  }
-}
-
-@utility cyber-glow-cyan {
-  background: radial-gradient(circle, rgba(0, 240, 255, 0.15) 0%, transparent 70%);
-  filter: blur(60px);
-  animation: cyber-pulse 10s ease-in-out infinite;
-}
-
-@utility cyber-glow-pink {
-  background: radial-gradient(circle, rgba(255, 0, 127, 0.12) 0%, transparent 70%);
-  filter: blur(65px);
-  animation: cyber-pulse 14s ease-in-out infinite reverse;
 }

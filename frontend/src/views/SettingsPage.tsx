@@ -1,231 +1,243 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useAuth } from '../lib/auth.js'
-import { api } from '../lib/api.js'
 import {
   ArrowLeft,
-  CheckCircle,
-  XCircle,
   Bell,
   Check,
-  ExternalLink,
-  Shield,
-  Loader2,
-  Copy,
+  CheckCircle,
   Clock,
+  Copy,
+  ExternalLink,
+  Loader2,
   LogOut,
+  Sparkles,
   User as UserIcon,
-  Sparkles
-} from 'lucide-react'
-import MarkbelLogo from '../components/MarkbelLogo.js'
+  XCircle,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import MarkbelLogo from "../components/MarkbelLogo.js";
+import { api } from "../lib/api.js";
+import { useAuth } from "../lib/auth.js";
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [ticktickConnected, setTicktickConnected] = useState(false)
-  const [ticktickLoading, setTicktickLoading] = useState(true)
-  const [ticktickProjects, setTicktickProjects] = useState<any[]>([])
-  const [pushSupported, setPushSupported] = useState(false)
-  const [pushSubscribed, setPushSubscribed] = useState(false)
-  const [pushLoading, setPushLoading] = useState(false)
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
-  const [noticeMessage, setNoticeMessage] = useState('')
+  const [ticktickConnected, setTicktickConnected] = useState(false);
+  const [ticktickLoading, setTicktickLoading] = useState(true);
+  const [ticktickProjects, setTicktickProjects] = useState<any[]>([]);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [noticeMessage, setNoticeMessage] = useState("");
 
   useEffect(() => {
-    if (searchParams.get('ticktick') === 'connected') {
-      setNoticeMessage('TickTick connected successfully!')
-      setTimeout(() => setNoticeMessage(''), 4000)
+    if (searchParams.get("ticktick") === "connected") {
+      setNoticeMessage("TickTick connected successfully!");
+      setTimeout(() => setNoticeMessage(""), 4000);
     }
-  }, [searchParams])
+  }, [searchParams]);
 
   // Check TickTick status
   const loadTicktickStatus = async () => {
     try {
-      const res = await api.get<{ connected: boolean; defaultProjectId?: string }>('/integrations/ticktick/status')
-      setTicktickConnected(res.connected)
+      const res = await api.get<{
+        connected: boolean;
+        defaultProjectId?: string;
+      }>("/integrations/ticktick/status");
+      setTicktickConnected(res.connected);
       if (res.connected) {
         try {
-          const projs = await api.get<any[]>('/integrations/ticktick/projects')
-          setTicktickProjects(projs)
+          const projs = await api.get<any[]>("/integrations/ticktick/projects");
+          setTicktickProjects(projs);
         } catch (err) {
-          console.warn('Failed to load TickTick projects:', err)
+          console.warn("Failed to load TickTick projects:", err);
         }
       }
     } catch (err) {
-      console.warn('Failed to load TickTick status:', err)
+      console.warn("Failed to load TickTick status:", err);
     } finally {
-      setTicktickLoading(false)
+      setTicktickLoading(false);
     }
-  }
+  };
 
   // Check Push status
   useEffect(() => {
-    const isSupported = 'serviceWorker' in navigator && ('PushManager' in window || 'Notification' in window)
-    setPushSupported(isSupported)
+    const isSupported =
+      "serviceWorker" in navigator &&
+      ("PushManager" in window || "Notification" in window);
+    setPushSupported(isSupported);
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then((reg) => {
-        if (reg.pushManager) {
-          reg.pushManager.getSubscription().then((sub) => {
-            setPushSubscribed(Boolean(sub))
-          })
-        }
-      }).catch((err) => {
-        console.warn('Service Worker registration check:', err)
-      })
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then((reg) => {
+          if (reg.pushManager) {
+            reg.pushManager.getSubscription().then((sub) => {
+              setPushSubscribed(Boolean(sub));
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn("Service Worker registration check:", err);
+        });
     }
-    loadTicktickStatus()
-  }, [])
+    loadTicktickStatus();
+  }, []);
 
   const handleConnectTickTick = async () => {
     try {
-      const res = await api.get<{ url: string }>('/integrations/ticktick/auth')
+      const res = await api.get<{ url: string }>("/integrations/ticktick/auth");
       if (res.url) {
-        window.location.href = res.url
+        window.location.href = res.url;
       }
     } catch (err) {
-      alert('Failed to initiate TickTick auth. Make sure TICKTICK_CLIENT_ID is configured.')
+      alert(
+        "Failed to initiate TickTick auth. Make sure TICKTICK_CLIENT_ID is configured.",
+      );
     }
-  }
+  };
 
   const handleDisconnectTickTick = async () => {
-    if (!confirm('Disconnect TickTick account?')) return
-    setTicktickLoading(true)
+    if (!confirm("Disconnect TickTick account?")) return;
+    setTicktickLoading(true);
     try {
-      await api.delete('/integrations/ticktick')
-      setTicktickConnected(false)
-      setTicktickProjects([])
+      await api.delete("/integrations/ticktick");
+      setTicktickConnected(false);
+      setTicktickProjects([]);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     } finally {
-      setTicktickLoading(false)
+      setTicktickLoading(false);
     }
-  }
+  };
 
   const handleSubscribePush = async () => {
-    if (!pushSupported) return
-    setPushLoading(true)
+    if (!pushSupported) return;
+    setPushLoading(true);
     try {
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') {
-        alert('Notification permission denied by browser')
-        setPushLoading(false)
-        return
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        alert("Notification permission denied by browser");
+        setPushLoading(false);
+        return;
       }
 
-      const reg = await navigator.serviceWorker.register('/sw.js')
-      await navigator.serviceWorker.ready
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
 
-      const vapidRes = await api.get<{ publicKey: string }>('/push/vapid-key')
+      const vapidRes = await api.get<{ publicKey: string }>("/push/vapid-key");
       if (!vapidRes.publicKey) {
-        alert('VAPID public key not set on backend environment')
-        setPushLoading(false)
-        return
+        alert("VAPID public key not set on backend environment");
+        setPushLoading(false);
+        return;
       }
 
       // Convert VAPID key to Uint8Array
-      const padding = '='.repeat((4 - (vapidRes.publicKey.length % 4)) % 4)
-      const base64 = (vapidRes.publicKey + padding).replace(/-/g, '+').replace(/_/g, '/')
-      const rawData = window.atob(base64)
-      const outputArray = new Uint8Array(rawData.length)
+      const padding = "=".repeat((4 - (vapidRes.publicKey.length % 4)) % 4);
+      const base64 = (vapidRes.publicKey + padding)
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
       for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i)
+        outputArray[i] = rawData.charCodeAt(i);
       }
 
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: outputArray
-      })
+        applicationServerKey: outputArray,
+      });
 
-      const subObj = sub.toJSON()
-      await api.post('/push/subscribe', {
+      const subObj = sub.toJSON();
+      await api.post("/push/subscribe", {
         endpoint: subObj.endpoint,
         keys: subObj.keys,
-        deviceLabel: navigator.userAgent.includes('Mobile') ? 'Mobile Browser' : 'Desktop Browser'
-      })
+        deviceLabel: navigator.userAgent.includes("Mobile")
+          ? "Mobile Browser"
+          : "Desktop Browser",
+      });
 
-      setPushSubscribed(true)
-      setNoticeMessage('Push notifications enabled for this device!')
-      setTimeout(() => setNoticeMessage(''), 4000)
+      setPushSubscribed(true);
+      setNoticeMessage("Push notifications enabled for this device!");
+      setTimeout(() => setNoticeMessage(""), 4000);
     } catch (err: any) {
-      console.error('Push registration error:', err)
-      alert('Push setup failed: ' + err.message)
+      console.error("Push registration error:", err);
+      alert("Push setup failed: " + err.message);
     } finally {
-      setPushLoading(false)
+      setPushLoading(false);
     }
-  }
+  };
 
   const handleUnsubscribePush = async () => {
-    setPushLoading(true)
+    setPushLoading(true);
     try {
-      const reg = await navigator.serviceWorker.ready
-      const sub = await reg.pushManager.getSubscription()
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await sub.unsubscribe()
-        await api.delete('/push/unsubscribe', { endpoint: sub.endpoint })
+        await sub.unsubscribe();
+        await api.delete("/push/unsubscribe", { endpoint: sub.endpoint });
       }
-      setPushSubscribed(false)
+      setPushSubscribed(false);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     } finally {
-      setPushLoading(false)
+      setPushLoading(false);
     }
-  }
+  };
 
   const handleTestPush = async () => {
-    setPushLoading(true)
+    setPushLoading(true);
     try {
-      const res = await api.post<{ success: boolean; sent: number }>('/push/send-test', {})
-      setNoticeMessage(`Test push sent successfully to ${res.sent} device(s)!`)
-      setTimeout(() => setNoticeMessage(''), 4000)
+      const res = await api.post<{ success: boolean; sent: number }>(
+        "/push/send-test",
+        {},
+      );
+      setNoticeMessage(`Test push sent successfully to ${res.sent} device(s)!`);
+      setTimeout(() => setNoticeMessage(""), 4000);
     } catch (err: any) {
-      alert('Failed to send test push: ' + (err.message || 'Unknown error'))
+      alert("Failed to send test push: " + (err.message || "Unknown error"));
     } finally {
-      setPushLoading(false)
+      setPushLoading(false);
     }
-  }
+  };
 
   const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedUrl(label)
-    setTimeout(() => setCopiedUrl(null), 2000)
-  }
+    navigator.clipboard.writeText(text);
+    setCopiedUrl(label);
+    setTimeout(() => setCopiedUrl(null), 2000);
+  };
 
-  const appOrigin = window.location.origin
+  const appOrigin = window.location.origin;
 
   return (
-    <div className="space-y-8 p-4 sm:p-6 md:p-8 max-w-4xl mx-auto pb-24 min-h-screen relative overflow-x-hidden font-mono text-slate-200">
-      {/* Cyber Background backplates */}
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-grid" />
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-scanlines opacity-20" />
-
+    <div className="space-y-8 p-4 sm:p-6 md:p-8 max-w-4xl mx-auto pb-24 min-h-screen relative overflow-x-hidden text-[var(--color-text-primary)]">
       {/* Header */}
-      <header className="cyber-card px-5 py-4 rounded flex items-center justify-between shadow-2xl relative z-10 border border-cyber-cyan/35 bg-black/90">
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyber-cyan via-cyber-pink to-cyber-yellow" />
-
+      <header className="studio-card px-5 py-4 flex items-center justify-between z-10 border border-[var(--color-border-default)]">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/')}
-            className="cyber-btn-secondary p-2 rounded text-cyber-cyan hover:text-white transition-colors"
+            onClick={() => navigate("/")}
+            className="btn-secondary p-2 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
             title="Back to Bookmarks"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <MarkbelLogo size={32} />
           <div>
-            <h1 className="text-lg font-black tracking-widest text-white uppercase">
-              System Settings & Integrations
+            <h1 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">
+              Settings & Integrations
             </h1>
-            <p className="text-[9px] text-cyber-cyan font-bold tracking-widest uppercase">Configuration Matrix</p>
+            <p className="text-[10px] text-[var(--color-text-muted)] font-semibold tracking-wide uppercase">
+              Configuration
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={logout}
-            className="flex items-center gap-1.5 text-xs cyber-btn-danger px-3 py-1.5 rounded"
+            className="flex items-center gap-1.5 text-xs btn-danger px-3 py-1.5 rounded"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
@@ -235,59 +247,71 @@ export default function SettingsPage() {
 
       {/* Notice Banner */}
       {noticeMessage && (
-        <div className="cyber-card p-4 rounded border-2 border-cyber-green bg-black/90 text-cyber-green text-xs font-bold flex items-center gap-2 shadow-[0_0_15px_rgba(57,255,20,0.2)] animate-in fade-in">
+        <div className="studio-card p-4 border border-[var(--color-status-success)] bg-green-50 text-[var(--color-status-success)] text-sm font-semibold flex items-center gap-2 animate-in fade-in">
           <CheckCircle className="w-4 h-4 shrink-0" />
           <span>{noticeMessage}</span>
         </div>
       )}
 
       {/* User Profile Card */}
-      <section className="cyber-card p-6 rounded border border-cyber-cyan/25 bg-black/85 relative space-y-4">
-        <div className="flex items-center justify-between border-b border-cyber-cyan/15 pb-3">
-          <div className="flex items-center gap-2 text-cyber-cyan text-xs font-bold uppercase tracking-wider">
-            <UserIcon className="w-4 h-4" />
+      <section className="studio-card p-6 relative space-y-4">
+        <div className="flex items-center justify-between border-b border-[var(--color-border-default)] pb-3">
+          <div className="flex items-center gap-2 text-[var(--color-text-primary)] text-sm font-semibold tracking-wide">
+            <UserIcon className="w-4 h-4 text-[var(--color-accent)]" />
             <span>User Account Identity</span>
           </div>
-          <span className="text-[10px] text-cyber-yellow bg-black border border-cyber-yellow/30 px-2 py-0.5 font-bold uppercase">
+          <span className="text-[10px] text-[var(--color-text-primary)] bg-[var(--color-bg-element)] border border-[var(--color-border-default)] px-2 py-0.5 font-bold uppercase rounded-md">
             Active Session
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-slate-500 text-[10px] block uppercase font-bold">User Name</span>
-            <span className="text-white font-bold text-sm">{user?.name}</span>
+            <span className="text-[var(--color-text-muted)] text-[10px] block uppercase font-bold mb-1">
+              User Name
+            </span>
+            <span className="text-[var(--color-text-primary)] font-semibold">
+              {user?.name}
+            </span>
           </div>
           <div>
-            <span className="text-slate-500 text-[10px] block uppercase font-bold">Email Address</span>
-            <span className="text-white font-bold text-sm">{user?.email}</span>
+            <span className="text-[var(--color-text-muted)] text-[10px] block uppercase font-bold mb-1">
+              Email Address
+            </span>
+            <span className="text-[var(--color-text-primary)] font-semibold">
+              {user?.email}
+            </span>
           </div>
         </div>
       </section>
 
       {/* TickTick Integration Card */}
-      <section className="cyber-card p-6 rounded border border-cyber-cyan/35 bg-black/90 relative space-y-5 shadow-[0_0_20px_rgba(0,240,255,0.08)]">
-        <div className="flex items-center justify-between border-b border-cyber-cyan/15 pb-4">
+      <section className="studio-card p-6 relative space-y-5">
+        <div className="flex items-center justify-between border-b border-[var(--color-border-default)] pb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-[#617bfb]/20 border border-[#617bfb] text-[#617bfb] flex items-center justify-center font-black rounded">
+            <div className="w-7 h-7 bg-blue-100 border border-blue-200 text-blue-600 flex items-center justify-center font-bold rounded">
               ✓
             </div>
             <div>
-              <h3 className="text-sm font-black text-white uppercase tracking-wider">TickTick Integration</h3>
-              <p className="text-[10px] text-slate-400 font-sans">Push bookmarks directly to your TickTick tasks & reminders list</p>
+              <h3 className="text-sm font-bold text-[var(--color-text-primary)] tracking-wide">
+                TickTick Integration
+              </h3>
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                Push bookmarks directly to your TickTick tasks & reminders list
+              </p>
             </div>
           </div>
 
           <div>
             {ticktickLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-cyber-cyan" />
+              <Loader2 className="w-4 h-4 animate-spin text-[var(--color-text-muted)]" />
             ) : ticktickConnected ? (
-              <span className="flex items-center gap-1.5 text-[10px] font-bold text-cyber-green bg-cyber-green/10 border border-cyber-green/40 px-2.5 py-1 rounded uppercase">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-status-success)] bg-green-50 border border-green-200 px-2.5 py-1 rounded uppercase">
                 <CheckCircle className="w-3.5 h-3.5" />
                 <span>Connected</span>
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 bg-white/5 border border-white/10 px-2.5 py-1 rounded uppercase">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-text-muted)] bg-[var(--color-bg-element)] border border-[var(--color-border-default)] px-2.5 py-1 rounded-md uppercase">
                 <XCircle className="w-3.5 h-3.5" />
                 <span>Disconnected</span>
               </span>
@@ -296,16 +320,24 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-4">
-          <p className="text-xs text-slate-300 leading-relaxed font-sans font-medium">
-            When connected, each bookmark card features a <strong>Push to TickTick</strong> button. Bookmarks push to a dedicated <strong>"Markbel"</strong> project by default, or any TickTick project you select.
+          <p className="text-sm text-[var(--color-text-muted)] leading-relaxed font-medium">
+            When connected, each bookmark card features a{" "}
+            <strong>Push to TickTick</strong> button. Bookmarks push to a
+            dedicated <strong>"Markbel"</strong> project by default, or any
+            TickTick project you select.
           </p>
 
           {ticktickConnected && ticktickProjects.length > 0 && (
-            <div className="bg-black/60 border border-cyber-cyan/20 p-4 rounded space-y-2">
-              <span className="text-[10px] text-cyber-cyan font-bold uppercase tracking-wider block">Connected TickTick Projects ({ticktickProjects.length})</span>
+            <div className="bg-[var(--color-bg-element)] border border-[var(--color-border-default)] p-4 rounded-md space-y-2">
+              <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider block">
+                Connected TickTick Projects ({ticktickProjects.length})
+              </span>
               <div className="flex flex-wrap gap-2 pt-1">
                 {ticktickProjects.map((p) => (
-                  <span key={p.id} className="text-[11px] bg-white/5 border border-white/10 px-2.5 py-1 rounded text-slate-300 font-medium">
+                  <span
+                    key={p.id}
+                    className="text-[11px] bg-white border border-[var(--color-border-default)] px-2.5 py-1 rounded-md text-[var(--color-text-primary)] font-medium shadow-sm"
+                  >
                     📁 {p.name}
                   </span>
                 ))}
@@ -317,14 +349,14 @@ export default function SettingsPage() {
             {ticktickConnected ? (
               <button
                 onClick={handleDisconnectTickTick}
-                className="cyber-btn-danger px-4 py-2 rounded text-xs font-bold uppercase cursor-pointer"
+                className="btn-danger px-4 py-2 rounded text-xs font-bold cursor-pointer"
               >
                 Disconnect TickTick
               </button>
             ) : (
               <button
                 onClick={handleConnectTickTick}
-                className="cyber-btn-primary px-5 py-2.5 rounded text-xs font-bold uppercase flex items-center gap-2 cursor-pointer shadow-[0_0_12px_rgba(0,240,255,0.2)]"
+                className="btn-primary px-5 py-2.5 text-xs font-bold flex items-center gap-2 cursor-pointer"
               >
                 <ExternalLink className="w-4 h-4" />
                 <span>Connect TickTick Account</span>
@@ -335,26 +367,31 @@ export default function SettingsPage() {
       </section>
 
       {/* Web Push Notifications Card */}
-      <section className="cyber-card p-6 rounded border border-cyber-pink/35 bg-black/90 relative space-y-5 shadow-[0_0_20px_rgba(255,0,127,0.08)]">
-        <div className="flex items-center justify-between border-b border-cyber-pink/15 pb-4">
+      <section className="studio-card p-6 relative space-y-5">
+        <div className="flex items-center justify-between border-b border-[var(--color-border-default)] pb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-cyber-pink/20 border border-cyber-pink text-cyber-pink flex items-center justify-center font-black rounded">
+            <div className="w-7 h-7 bg-amber-100 border border-amber-200 text-amber-600 flex items-center justify-center font-bold rounded">
               <Bell className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-white uppercase tracking-wider">Cross-Device Web Push</h3>
-              <p className="text-[10px] text-slate-400 font-sans">Receive daily digests and due reminders on browser, mobile PWA, or desktop</p>
+              <h3 className="text-sm font-bold text-[var(--color-text-primary)] tracking-wide">
+                Cross-Device Web Push
+              </h3>
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                Receive daily digests and due reminders on browser, mobile PWA,
+                or desktop
+              </p>
             </div>
           </div>
 
           <div>
             {pushSubscribed ? (
-              <span className="flex items-center gap-1.5 text-[10px] font-bold text-cyber-green bg-cyber-green/10 border border-cyber-green/40 px-2.5 py-1 rounded uppercase">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-status-success)] bg-green-50 border border-green-200 px-2.5 py-1 rounded uppercase">
                 <CheckCircle className="w-3.5 h-3.5" />
                 <span>Active Device</span>
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-[10px] font-bold text-cyber-yellow bg-cyber-yellow/10 border border-cyber-yellow/40 px-2.5 py-1 rounded uppercase">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded uppercase">
                 <Clock className="w-3.5 h-3.5" />
                 <span>Inactive</span>
               </span>
@@ -363,8 +400,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-4">
-          <p className="text-xs text-slate-300 leading-relaxed font-sans font-medium">
-            Enable browser Service Worker push notifications on this device to receive scheduled digest alerts and due bookmark reminders.
+          <p className="text-sm text-[var(--color-text-muted)] leading-relaxed font-medium">
+            Enable browser Service Worker push notifications on this device to
+            receive scheduled digest alerts and due bookmark reminders.
           </p>
 
           <div className="pt-1 flex flex-wrap items-center gap-3">
@@ -373,14 +411,14 @@ export default function SettingsPage() {
                 <button
                   onClick={handleUnsubscribePush}
                   disabled={pushLoading}
-                  className="cyber-btn-secondary px-4 py-2 rounded text-xs font-bold uppercase cursor-pointer"
+                  className="btn-secondary px-4 py-2 text-xs font-bold cursor-pointer"
                 >
                   Disable Push On This Device
                 </button>
                 <button
                   onClick={handleTestPush}
                   disabled={pushLoading}
-                  className="cyber-btn-primary px-4 py-2 rounded text-xs font-bold uppercase flex items-center gap-1.5 cursor-pointer shadow-[0_0_12px_rgba(57,255,20,0.2)]"
+                  className="btn-primary px-4 py-2 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Send Test Push Now</span>
@@ -390,60 +428,112 @@ export default function SettingsPage() {
               <button
                 onClick={handleSubscribePush}
                 disabled={pushLoading || !pushSupported}
-                className="cyber-btn-primary px-5 py-2.5 rounded text-xs font-bold uppercase flex items-center gap-2 cursor-pointer shadow-[0_0_12px_rgba(255,0,127,0.2)]"
+                className="btn-primary px-5 py-2.5 text-xs font-bold flex items-center gap-2 cursor-pointer"
               >
-                {pushLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
-                <span>{pushSupported ? 'Enable Push Notifications' : 'Push Not Supported'}</span>
+                {pushLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Bell className="w-4 h-4" />
+                )}
+                <span>
+                  {pushSupported
+                    ? "Enable Push Notifications"
+                    : "Push Not Supported"}
+                </span>
               </button>
             )}
           </div>
 
           {/* cron-job.org Setup Guide */}
-          <div className="border border-cyber-cyan/20 bg-black/60 p-4 rounded space-y-3 pt-3">
-            <div className="flex items-center gap-2 text-cyber-cyan text-xs font-bold uppercase">
-              <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+          <div className="border border-[var(--color-border-default)] bg-[var(--color-bg-element)] p-4 rounded-md space-y-3 pt-3">
+            <div className="flex items-center gap-2 text-[var(--color-text-primary)] text-xs font-bold uppercase tracking-wide">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
               <span>cron-job.org Trigger Endpoints for All Devices</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
-              To trigger automated notifications across all your devices, set up free cron jobs at <a href="https://console.cron-job.org/jobs" target="_blank" rel="noreferrer" className="text-cyber-cyan underline font-mono">console.cron-job.org</a>:
+            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+              To trigger automated notifications across all your devices, set up
+              free cron jobs at{" "}
+              <a
+                href="https://console.cron-job.org/jobs"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--color-accent)] underline"
+              >
+                console.cron-job.org
+              </a>
+              :
             </p>
 
             <div className="space-y-2 text-xs">
-              <div className="bg-black p-2.5 rounded border border-white/10 flex items-center justify-between gap-2">
+              <div className="bg-white p-2.5 rounded-md border border-[var(--color-border-default)] flex items-center justify-between gap-2 shadow-sm">
                 <div className="truncate">
-                  <span className="text-[9px] text-cyber-yellow block font-bold uppercase">1. Daily Digest (Set schedule: Daily 9:00 AM)</span>
-                  <code className="text-[10px] text-slate-300 truncate block">{appOrigin}/api/notifications/digest</code>
+                  <span className="text-[10px] text-[var(--color-text-muted)] block font-bold uppercase mb-1">
+                    1. Daily Digest (Set schedule: Daily 9:00 AM)
+                  </span>
+                  <code className="text-[11px] text-[var(--color-text-primary)] truncate block font-mono bg-[var(--color-bg-element)] px-1 py-0.5 rounded">
+                    {appOrigin}/api/notifications/digest
+                  </code>
                 </div>
                 <button
-                  onClick={() => handleCopy(`${appOrigin}/api/notifications/digest`, 'digest')}
-                  className="cyber-btn-secondary p-1.5 rounded shrink-0"
+                  onClick={() =>
+                    handleCopy(
+                      `${appOrigin}/api/notifications/digest`,
+                      "digest",
+                    )
+                  }
+                  className="btn-secondary p-1.5 rounded shrink-0"
                   title="Copy Digest URL"
                 >
-                  {copiedUrl === 'digest' ? <Check className="w-3.5 h-3.5 text-cyber-green" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedUrl === "digest" ? (
+                    <Check className="w-3.5 h-3.5 text-[var(--color-status-success)]" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
                 </button>
               </div>
 
-              <div className="bg-black p-2.5 rounded border border-white/10 flex items-center justify-between gap-2">
+              <div className="bg-white p-2.5 rounded-md border border-[var(--color-border-default)] flex items-center justify-between gap-2 shadow-sm">
                 <div className="truncate">
-                  <span className="text-[9px] text-cyber-yellow block font-bold uppercase">2. Due Reminder Check (Set schedule: Every 30 mins)</span>
-                  <code className="text-[10px] text-slate-300 truncate block">{appOrigin}/api/notifications/due-check</code>
+                  <span className="text-[10px] text-[var(--color-text-muted)] block font-bold uppercase mb-1">
+                    2. Due Reminder Check (Set schedule: Every 30 mins)
+                  </span>
+                  <code className="text-[11px] text-[var(--color-text-primary)] truncate block font-mono bg-[var(--color-bg-element)] px-1 py-0.5 rounded">
+                    {appOrigin}/api/notifications/due-check
+                  </code>
                 </div>
                 <button
-                  onClick={() => handleCopy(`${appOrigin}/api/notifications/due-check`, 'due')}
-                  className="cyber-btn-secondary p-1.5 rounded shrink-0"
+                  onClick={() =>
+                    handleCopy(
+                      `${appOrigin}/api/notifications/due-check`,
+                      "due",
+                    )
+                  }
+                  className="btn-secondary p-1.5 rounded shrink-0"
                   title="Copy Due Check URL"
                 >
-                  {copiedUrl === 'due' ? <Check className="w-3.5 h-3.5 text-cyber-green" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedUrl === "due" ? (
+                    <Check className="w-3.5 h-3.5 text-[var(--color-status-success)]" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
                 </button>
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-500 font-sans">
-              * In cron-job.org, add custom header: <code className="text-cyber-pink">Authorization: Bearer YOUR_CRON_SECRET</code> or append <code className="text-cyber-pink">?secret=YOUR_CRON_SECRET</code> to the URL.
+            <p className="text-[11px] text-[var(--color-text-muted)]">
+              * In cron-job.org, add custom header:{" "}
+              <code className="bg-[var(--color-bg-elevated)] px-1 rounded">
+                Authorization: Bearer YOUR_CRON_SECRET
+              </code>{" "}
+              or append{" "}
+              <code className="bg-[var(--color-bg-elevated)] px-1 rounded">
+                ?secret=YOUR_CRON_SECRET
+              </code>{" "}
+              to the URL.
             </p>
           </div>
         </div>
       </section>
     </div>
-  )
+  );
 }

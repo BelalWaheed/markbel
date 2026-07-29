@@ -153,46 +153,31 @@ export default function ShareTargetPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 relative overflow-hidden">
-        <div className="fixed inset-0 pointer-events-none z-0 cyber-grid" />
-        <div className="fixed inset-0 pointer-events-none z-0 cyber-scanlines opacity-25" />
-        <Loader2 className="w-8 h-8 animate-spin text-cyber-cyan relative z-10" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--color-bg-default)] p-4 relative overflow-hidden">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--color-accent)] relative z-10" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background relative overflow-hidden">
-      {/* Cyber Grid & Scanline Backplates */}
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-grid" />
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-scanlines opacity-25" />
-
-      {/* Cyber Glowing Background Canvas */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute -top-20 -right-20 w-[450px] h-[450px] cyber-glow-cyan rounded-full" />
-        <div className="absolute -bottom-20 -left-20 w-[450px] h-[450px] cyber-glow-pink rounded-full" />
-      </div>
-
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[var(--color-bg-default)] relative overflow-hidden text-[var(--color-text-primary)]">
       <div className="w-full max-w-lg relative z-10">
         <button 
           onClick={() => navigate('/')} 
-          className="mb-4 flex items-center text-xs text-cyber-cyan hover:text-white transition-colors cursor-pointer bg-black/80 hover:bg-black px-3.5 py-2 border border-cyber-cyan/35 rounded"
+          className="mb-4 flex items-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors cursor-pointer bg-white hover:bg-gray-50 px-3.5 py-2 border border-[var(--color-border-default)] rounded-md shadow-sm font-semibold"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           <span>Back to Vault</span>
         </button>
 
-        <div className="cyber-card p-6 rounded shadow-2xl border border-cyber-cyan/35 bg-black/90">
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyber-cyan to-cyber-pink" />
-
+        <div className="studio-card p-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 border border-cyber-cyan text-cyber-cyan bg-cyber-cyan/10 flex items-center justify-center relative">
-              <div className="absolute inset-0 bg-cyber-cyan blur-md opacity-20" />
-              <Sparkles className="w-5 h-5 fill-current relative z-10" />
+            <div className="w-10 h-10 border border-[var(--color-border-default)] text-[var(--color-accent)] bg-blue-50 flex items-center justify-center rounded-md">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white uppercase">Quick Save Bookmark</h3>
-              <p className="text-xs text-slate-400 mt-0.5 font-medium">
+              <h3 className="text-lg font-bold text-[var(--color-text-primary)] tracking-tight">Quick Save Bookmark</h3>
+              <p className="text-sm text-[var(--color-text-muted)] mt-0.5 font-medium">
                 Save shared resource to your Markbel vault
               </p>
             </div>
@@ -200,15 +185,15 @@ export default function ShareTargetPage() {
 
           <form onSubmit={handleSave} className="space-y-4">
             {image && (
-              <div className="relative aspect-video w-full rounded overflow-hidden border border-cyber-cyan/20 bg-black shadow-md">
+              <div className="relative aspect-video w-full rounded-md overflow-hidden border border-[var(--color-border-default)] bg-[var(--color-bg-element)] shadow-sm">
                 <img 
                   src={image} 
                   alt="Link preview" 
                   className="w-full h-full object-cover"
                   onError={() => setImage('')} 
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 to-transparent flex items-end p-3">
-                  <span className="text-[9px] text-cyber-cyan font-bold uppercase tracking-widest bg-black border border-cyber-cyan/35 px-2 py-0.5 shadow-sm font-mono">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end p-3">
+                  <span className="text-[10px] text-white font-bold uppercase tracking-widest bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded shadow-sm">
                     Preview
                   </span>
                 </div>
@@ -216,7 +201,7 @@ export default function ShareTargetPage() {
             )}
 
             <div>
-              <label className="text-xs font-semibold text-slate-300 mb-1.5 block">URL</label>
+              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">URL</label>
               <div className="relative">
                 <input
                   type="url"
@@ -224,18 +209,18 @@ export default function ShareTargetPage() {
                   onChange={(e) => setUrl(e.target.value)}
                   onBlur={() => url.trim() && fetchLinkMeta(url)}
                   placeholder="https://example.com"
-                  className="w-full cyber-input rounded pl-10 pr-4 py-2.5 text-xs font-bold font-sans"
+                  className="w-full studio-input pl-10 pr-4 py-2.5 text-sm"
                   required
                 />
-                <LinkIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-cyber-cyan/60" />
+                <LinkIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" />
               </div>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-300">Title</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)]">Title</label>
                 {isLoadingMeta && (
-                  <span className="text-[9px] font-bold text-cyber-green animate-pulse flex items-center gap-1 font-mono">
+                  <span className="text-[10px] font-bold text-[var(--color-accent)] animate-pulse flex items-center gap-1">
                     <Loader2 className="w-3 h-3 animate-spin" /> Fetching info...
                   </span>
                 )}
@@ -245,23 +230,23 @@ export default function ShareTargetPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Link Title"
-                className="w-full cyber-input rounded px-4 py-2.5 text-xs font-bold font-sans"
+                className="w-full studio-input px-4 py-2.5 text-sm"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Notes / Description</label>
+              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Notes / Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Add notes, highlights, takeaways..."
                 rows={3}
-                className="w-full cyber-input rounded px-4 py-2.5 text-xs resize-none font-sans"
+                className="w-full studio-input px-4 py-2.5 text-sm resize-none"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group</label>
+              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group</label>
               {!showNewGroupInput ? (
                 <div className="flex items-center gap-2">
                   <select
@@ -272,10 +257,10 @@ export default function ShareTargetPage() {
                       const color = groupColors[val] || defaultGroupColors[val] || 'cyan';
                       setSelectedColor(color);
                     }}
-                    className="flex-1 cyber-input rounded px-3 py-2.5 text-xs font-sans bg-black text-cyber-cyan"
+                    className="flex-1 studio-input px-3 py-2.5 text-sm"
                   >
                     {existingGroups.map(group => (
-                      <option key={group} value={group} className="bg-black text-cyber-cyan font-sans">
+                      <option key={group} value={group}>
                         {group}
                       </option>
                     ))}
@@ -283,7 +268,7 @@ export default function ShareTargetPage() {
                   <button
                     type="button"
                     onClick={() => setShowNewGroupInput(true)}
-                    className="cyber-btn-secondary rounded p-2.5 flex items-center justify-center shrink-0"
+                    className="btn-secondary rounded-md p-2.5 flex items-center justify-center shrink-0"
                     title="Create new folder group"
                   >
                     <FolderPlus className="w-4 h-4" />
@@ -295,7 +280,7 @@ export default function ShareTargetPage() {
                     value={newGroupInput}
                     onChange={(e) => setNewGroupInput(e.target.value)}
                     placeholder="New group name..."
-                    className="flex-1 cyber-input rounded px-4 py-2.5 text-xs font-sans"
+                    className="flex-1 studio-input px-4 py-2.5 text-sm"
                     autoFocus
                   />
                   <button
@@ -304,7 +289,7 @@ export default function ShareTargetPage() {
                       setShowNewGroupInput(false)
                       setNewGroupInput('')
                     }}
-                    className="text-cyber-pink hover:text-white transition-colors p-2.5 cursor-pointer bg-cyber-pink/5 rounded border border-cyber-pink/25 flex items-center justify-center shrink-0"
+                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-2.5 cursor-pointer bg-[var(--color-bg-element)] rounded-md border border-[var(--color-border-default)] flex items-center justify-center shrink-0"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -313,20 +298,20 @@ export default function ShareTargetPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group Custom Color</label>
+              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group Custom Color</label>
               <div className="flex gap-2.5 pt-1">
                 {(['cyan', 'pink', 'green', 'yellow'] as const).map((color) => {
                   const colorClasses = {
-                    cyan: 'bg-cyber-cyan border-cyber-cyan text-black',
-                    pink: 'bg-cyber-pink border-cyber-pink text-black',
-                    green: 'bg-cyber-green border-cyber-green text-black',
-                    yellow: 'bg-cyber-yellow border-cyber-yellow text-black',
+                    cyan: 'bg-blue-500 border-blue-600 text-white',
+                    pink: 'bg-pink-500 border-pink-600 text-white',
+                    green: 'bg-green-500 border-green-600 text-white',
+                    yellow: 'bg-amber-500 border-amber-600 text-white',
                   }
                   const borderClasses = {
-                    cyan: 'border-cyber-cyan/50 hover:border-cyber-cyan text-cyber-cyan bg-cyber-cyan/5',
-                    pink: 'border-cyber-pink/50 hover:border-cyber-pink text-cyber-pink bg-cyber-pink/5',
-                    green: 'border-cyber-green/50 hover:border-cyber-green text-cyber-green bg-cyber-green/5',
-                    yellow: 'border-cyber-yellow/50 hover:border-cyber-yellow text-cyber-yellow bg-cyber-yellow/5',
+                    cyan: 'border-blue-200 hover:border-blue-500 bg-blue-50',
+                    pink: 'border-pink-200 hover:border-pink-500 bg-pink-50',
+                    green: 'border-green-200 hover:border-green-500 bg-green-50',
+                    yellow: 'border-amber-200 hover:border-amber-500 bg-amber-50',
                   }
                   const isSelected = selectedColor === color
                   return (
@@ -334,8 +319,8 @@ export default function ShareTargetPage() {
                       key={color}
                       type="button"
                       onClick={() => setSelectedColor(color)}
-                      className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center cursor-pointer ${
-                        isSelected ? `${colorClasses[color]} scale-110 shadow-[0_0_8px_rgba(255,255,255,0.45)]` : `bg-transparent ${borderClasses[color]}`
+                      className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center cursor-pointer shadow-sm ${
+                        isSelected ? `${colorClasses[color]} scale-110` : `bg-transparent ${borderClasses[color]}`
                       }`}
                       title={`Set group color to ${color}`}
                     >
@@ -347,27 +332,27 @@ export default function ShareTargetPage() {
             </div>
 
             {errorMessage && (
-              <div className="p-3 text-xs bg-cyber-pink/10 border border-cyber-pink/35 text-cyber-pink rounded font-semibold text-center uppercase">
-                Error: {errorMessage}
+              <div className="p-3 text-sm bg-red-50 border border-red-200 text-[var(--color-status-error)] rounded-md font-semibold text-center">
+                {errorMessage}
               </div>
             )}
 
-            <div className="flex gap-3 pt-3 border-t border-cyber-cyan/15">
+            <div className="flex gap-3 pt-4 border-t border-[var(--color-border-default)]">
               <button
                 type="button"
                 onClick={() => navigate('/')}
-                className="flex-1 cyber-btn-secondary py-2.5 rounded text-xs"
+                className="flex-1 btn-secondary py-2.5 text-sm"
                 disabled={isSaving}
               >
                 Discard
               </button>
               <button
                 type="submit"
-                className="flex-1 cyber-btn-primary py-2.5 rounded text-xs font-bold"
+                className="flex-1 btn-primary py-2.5 text-sm font-bold"
                 disabled={isSaving}
               >
                 {isSaving ? (
-                  <span className="flex items-center justify-center gap-2 font-mono text-xs">
+                  <span className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" /> Saving...
                   </span>
                 ) : (

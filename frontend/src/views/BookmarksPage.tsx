@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth.js'
 import { api } from '../lib/api.js'
+import { AnimatePresence } from 'framer-motion'
 import { 
   Folder, 
   Search, 
@@ -29,13 +30,20 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle2,
-  Bell
+  Bell,
+  Menu
 } from 'lucide-react'
 import MarkbelLogo from '../components/MarkbelLogo.js'
+import { useDebounce } from '../lib/useDebounce.js'
+import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts.js'
+import { useToast } from '../components/Toast.js'
+import { CardSkeleton, FolderSkeleton } from '../components/Skeleton.js'
+import UserGuideModal from '../components/UserGuideModal.js'
 
 export default function BookmarksPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const { showToast } = useToast()
 
   const [bookmarks, setBookmarks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,7 +63,23 @@ export default function BookmarksPage() {
   }
   const [filterStatus, setFilterStatus] = useState<'all' | 'unread' | 'read' | 'due'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  useKeyboardShortcuts([
+    {
+      key: '/',
+      preventInputFocus: false,
+      handler: (e) => {
+        if (searchInputRef.current) {
+          e.preventDefault()
+          searchInputRef.current.focus()
+        }
+      }
+    }
+  ])
 
   // Dialog/Modal states
   const [showAddModal, setShowAddModal] = useState(false)
@@ -76,6 +100,16 @@ export default function BookmarksPage() {
   // Custom themed delete confirmation states
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [bookmarkToDelete, setBookmarkToDelete] = useState<any>(null)
+
+  // User Guide state
+  const [showUserGuide, setShowUserGuide] = useState(() => {
+    return localStorage.getItem('markbel_has_seen_guide') !== 'true'
+  })
+
+  const closeUserGuide = () => {
+    localStorage.setItem('markbel_has_seen_guide', 'true')
+    setShowUserGuide(false)
+  }
 
   // Archive Modal states
   const [showArchiveModal, setShowArchiveModal] = useState(false)
@@ -115,7 +149,7 @@ export default function BookmarksPage() {
     try {
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
-        alert('Notification permission denied by browser')
+        showToast('Permission Denied', 'Notification permission denied by browser', 'error')
         return
       }
 
@@ -124,7 +158,7 @@ export default function BookmarksPage() {
 
       const vapidRes = await api.get<{ publicKey: string }>('/push/vapid-key')
       if (!vapidRes.publicKey) {
-        alert('VAPID public key not set on backend')
+        showToast('Error', 'VAPID public key not set on backend', 'error')
         return
       }
 
@@ -149,10 +183,10 @@ export default function BookmarksPage() {
       })
 
       setPushSubscribed(true)
-      alert('Push notifications enabled for this device!')
+      showToast('Success', 'Push notifications enabled for this device!', 'success')
     } catch (err: any) {
       console.error(err)
-      alert('Push setup failed: ' + err.message)
+      showToast('Setup Failed', 'Push setup failed: ' + err.message, 'error')
     } finally {
       setPushLoading(false)
     }
@@ -323,8 +357,8 @@ export default function BookmarksPage() {
     }
 
     // Search query filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
+    if (debouncedSearchQuery.trim()) {
+      const q = debouncedSearchQuery.toLowerCase()
       result = result.filter(
         (b) =>
           b.title.toLowerCase().includes(q) ||
@@ -340,7 +374,7 @@ export default function BookmarksPage() {
       if (!a.isPinned && b.isPinned) return 1
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     })
-  }, [bookmarks, activeGroup, filterStatus, searchQuery])
+  }, [bookmarks, activeGroup, filterStatus, debouncedSearchQuery])
 
   // Due bookmarks count for top alert bar
   const dueBookmarksList = useMemo(() => {
@@ -526,8 +560,9 @@ export default function BookmarksPage() {
       setTimeout(() => setPushedSuccessId(null), 3000)
       setShowTickTickModal(false)
       setBookmarkToPush(null)
+      showToast('Task Pushed', 'Successfully pushed to TickTick', 'success')
     } catch (err: any) {
-      alert('Failed to push to TickTick: ' + (err.message || 'Unknown error'))
+      showToast('Push Failed', 'Failed to push to TickTick: ' + (err.message || 'Unknown error'), 'error')
     } finally {
       setIsPushingTicktick(false)
     }
@@ -626,305 +661,362 @@ export default function BookmarksPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-24 min-h-screen relative overflow-x-hidden">
-      {/* Cyber Grid & Scanline Backplates */}
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-grid" />
-      <div className="fixed inset-0 pointer-events-none z-0 cyber-scanlines opacity-20" />
+    <div className="flex h-screen overflow-hidden bg-[var(--color-bg-main)] text-[var(--color-text-primary)] font-sans">
+      {/* Sidebar Overlay for Mobile */}
+      {!isSidebarOpen && (
+        <div 
+          className="md:hidden fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+          onClick={() => setIsSidebarOpen(true)}
+        />
+      )}
 
-      {/* Cyber Glowing Background Canvas */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[10%] right-[10%] w-[550px] h-[550px] cyber-glow-cyan rounded-full" />
-        <div className="absolute bottom-[20%] left-[5%] w-[500px] h-[500px] cyber-glow-pink rounded-full" />
-      </div>
+      {/* Sidebar */}
+      <aside 
+        className={`${
+          isSidebarOpen ? '-translate-x-full md:translate-x-0 w-0 md:w-64' : 'translate-x-0 w-64'
+        } fixed md:static inset-y-0 left-0 z-50 flex flex-col transition-all duration-300 ease-in-out border-r border-[var(--color-border-default)] bg-[var(--color-bg-surface)]`}
+      >
+        <div className="p-4 flex items-center justify-between border-b border-[var(--color-border-default)]">
+          <div className="flex items-center gap-3">
+            <MarkbelLogo size={28} />
+            <div>
+              <h1 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">
+                Markbel
+              </h1>
+            </div>
+          </div>
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="md:hidden p-1.5 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] rounded-md transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-      {/* Header Navbar */}
-      <header className="cyber-card px-5 py-4 rounded flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xl relative z-10 border border-cyber-cyan/35 bg-black/90">
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyber-cyan via-cyber-pink to-cyber-yellow" />
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-6">
+          {/* Main Navigation */}
+          <div className="space-y-1">
+            <button
+              onClick={() => setActiveGroup(null)}
+              className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                !activeGroup 
+                  ? 'bg-[var(--color-bg-element)] text-[var(--color-text-primary)]' 
+                  : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]'
+              }`}
+            >
+              <FolderOpen className="w-4 h-4" />
+              All Bookmarks
+            </button>
+            <button
+              onClick={() => navigate('/archive')}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+            >
+              <Archive className="w-4 h-4" />
+              Archive
+            </button>
+            <button
+              onClick={() => navigate('/settings')}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </button>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <MarkbelLogo size={38} className="shadow-[0_0_10px_rgba(0,240,255,0.15)]" />
+          {/* Groups List */}
           <div>
-            <h1 className="text-xl font-black tracking-widest text-white font-mono uppercase">
-              Markbel
-            </h1>
-            <p className="text-[9px] text-cyber-cyan font-mono font-bold tracking-widest uppercase">Bookmarks Vault</p>
+            <div className="flex items-center justify-between px-3 mb-2">
+              <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                Collections
+              </h3>
+              <button 
+                onClick={() => { resetForm(); setShowAddModal(true) }}
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors p-1"
+                title="New Collection"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-0.5">
+              {groups.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-[var(--color-text-muted)]">No collections yet</div>
+              ) : (
+                groups.map(group => (
+                  <button
+                    key={group.name}
+                    onClick={() => setActiveGroup(group.name)}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 text-sm rounded-md transition-colors ${
+                      activeGroup === group.name 
+                        ? 'bg-[var(--color-bg-element)] text-[var(--color-text-primary)] font-medium' 
+                        : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Folder className="w-3.5 h-3.5 opacity-70" />
+                      <span className="truncate">{group.name}</span>
+                    </div>
+                    <span className="text-xs opacity-60 ml-2">{group.count}</span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Live Stats Bar */}
-        <div className="flex items-center gap-3 text-[10px] font-mono font-bold text-slate-300 bg-black/80 border border-cyber-cyan/20 px-3 py-1.5 rounded">
-          <span className="text-cyber-cyan">{stats.unread} unread</span>
-          <span className="text-slate-600">·</span>
-          <span className="text-cyber-green">{stats.savedThisWeek} saved this week</span>
-          <span className="text-slate-600">·</span>
-          <span className="text-slate-400">{stats.total} total</span>
-        </div>
-
-        {/* Quick Nav Actions */}
-        <div className="flex items-center gap-2 font-mono">
-          {!pushSubscribed && (
-            <button
-              onClick={handleQuickEnablePush}
-              disabled={pushLoading}
-              className="flex items-center gap-1.5 text-xs cyber-btn-primary px-3 py-1.5 rounded shadow-[0_0_10px_rgba(255,0,127,0.3)] animate-pulse"
-              title="Click to enable Web Push Notifications on this device with 1 click"
-            >
-              {pushLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">Enable Push</span>
-            </button>
-          )}
-          <button
-            onClick={() => navigate('/archive')}
-            className="flex items-center gap-1.5 text-xs cyber-btn-secondary px-3 py-1.5 rounded border border-cyber-yellow/30 text-cyber-yellow hover:text-white"
-            title="Cold Storage Archive"
-          >
-            <Archive className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Archive</span>
-          </button>
-          <button
-            onClick={() => navigate('/settings')}
-            className="flex items-center gap-1.5 text-xs cyber-btn-secondary px-3 py-1.5 rounded border border-cyber-cyan/30 text-cyber-cyan hover:text-white"
-            title="Settings & Integrations"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Settings</span>
-          </button>
+        {/* User Footer */}
+        <div className="p-4 border-t border-[var(--color-border-default)]">
           <button 
             onClick={logout}
-            className="flex items-center gap-1.5 text-xs cyber-btn-danger px-3 py-1.5 rounded"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-[var(--color-status-error)] hover:bg-red-50 rounded-md transition-colors"
           >
-            <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sign Out</span>
+            <LogOut className="w-4 h-4" />
+            Sign Out
           </button>
         </div>
-      </header>
+      </aside>
 
-      {/* Urgent "Due Today" Alert Banner */}
-      {dueBookmarksList.length > 0 && (
-        <div className="cyber-card p-4 rounded border-2 border-cyber-pink bg-black/90 relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-[0_0_20px_rgba(255,0,127,0.2)] font-mono animate-in fade-in">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top Header */}
+        <header className="flex-none h-16 bg-[var(--color-bg-surface)] border-b border-[var(--color-border-default)] px-4 sm:px-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded bg-cyber-pink/20 border border-cyber-pink text-cyber-pink flex items-center justify-center font-bold">
-              <AlertTriangle className="w-5 h-5 animate-bounce" />
-            </div>
-            <div>
-              <h4 className="text-xs font-black text-white uppercase tracking-wider">
-                Reading Reminders Due Today ({dueBookmarksList.length})
-              </h4>
-              <p className="text-[10px] text-slate-300 font-sans">
-                You set reminders to read these links today!
-              </p>
-            </div>
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="md:hidden p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] rounded-md transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-semibold text-[var(--color-text-primary)] truncate hidden sm:block">
+              {activeGroup ? activeGroup : 'All Bookmarks'}
+            </h2>
           </div>
+
+          <div className="flex items-center gap-3 flex-1 justify-end">
+            <div className="relative w-full max-w-md hidden sm:block">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="w-4 h-4 text-[var(--color-text-muted)]" />
+              </div>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search links (Press /)"
+                className="w-full bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] rounded-md py-1.5 pl-9 pr-3 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-border-focused)] focus:ring-1 focus:ring-[var(--color-border-focused)] transition-colors"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button 
+              onClick={() => { resetForm(); setShowAddModal(true) }}
+              className="btn-primary flex items-center gap-2 px-4 py-1.5 text-sm shrink-0 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Bookmark</span>
+            </button>
+          </div>
+        </header>
+
+      <main className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8">
+        <div className="max-w-6xl mx-auto space-y-6">
+          {/* Urgent "Due Today" Alert Banner */}
+          {dueBookmarksList.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-amber-900">
+                    Reading Reminders Due Today ({dueBookmarksList.length})
+                  </h4>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    You set reminders to read these links today!
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setFilterStatus('due')}
+                className="btn-primary px-4 py-2 text-xs shrink-0"
+              >
+                View Due Reminders
+              </button>
+            </div>
+          )}
+
+          {/* Resurface Discovery Card (Random Unread Pick) */}
+          {showResurface && resurfaceBookmarks.length > 0 && (
+            <section className="studio-card p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-[var(--color-border-default)] pb-3">
+                <div className="flex items-center gap-2 text-[var(--color-accent)] text-sm font-semibold">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Rediscovery Suggestions</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={loadResurface}
+                    className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors px-2 py-1 rounded-md hover:bg-[var(--color-bg-hover)]"
+                    title="Shuffle rediscovery suggestions"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Shuffle</span>
+                  </button>
+                  <button
+                    onClick={() => setShowResurface(false)}
+                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded-md hover:bg-[var(--color-bg-hover)]"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {resurfaceBookmarks.map((rb) => (
+                  <div
+                    key={rb.id}
+                    onClick={() => handleCardClick(rb.url)}
+                    className="border border-[var(--color-border-default)] hover:border-[var(--color-border-focused)] bg-[var(--color-bg-surface)] p-3 rounded-md cursor-pointer group transition-all"
+                  >
+                    <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
+                      {rb.group}
+                    </span>
+                    <h5 className="text-sm font-semibold text-[var(--color-text-primary)] group-hover:text-[var(--color-accent)] line-clamp-1 mb-1">
+                      {rb.title}
+                    </h5>
+                    <p className="text-xs text-[var(--color-text-muted)] truncate">
+                      {getDomain(rb.url)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+      {/* Filter Tabs & Controls */}
+      <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* Status Filter Tabs */}
+        <div className="flex items-center bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] rounded-md p-1 text-sm font-medium w-full sm:w-auto">
+          <button
+            onClick={() => setFilterStatus('all')}
+            className={`flex-1 sm:flex-none px-4 py-1.5 rounded transition-colors ${
+              filterStatus === 'all' ? 'bg-[var(--color-bg-elevated)] text-[var(--color-accent)] shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilterStatus('unread')}
+            className={`flex-1 sm:flex-none px-4 py-1.5 rounded transition-colors ${
+              filterStatus === 'unread' ? 'bg-[var(--color-bg-elevated)] text-[var(--color-accent)] shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
+            }`}
+          >
+            Unread
+          </button>
+          <button
+            onClick={() => setFilterStatus('read')}
+            className={`flex-1 sm:flex-none px-4 py-1.5 rounded transition-colors ${
+              filterStatus === 'read' ? 'bg-[var(--color-bg-elevated)] text-[var(--color-accent)] shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
+            }`}
+          >
+            Read
+          </button>
           <button
             onClick={() => setFilterStatus('due')}
-            className="cyber-btn-primary px-3.5 py-1.5 rounded text-xs font-bold uppercase shrink-0"
+            className={`flex-1 sm:flex-none px-4 py-1.5 rounded transition-colors ${
+              filterStatus === 'due' ? 'bg-amber-100 text-amber-700 shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
+            }`}
           >
-            View Due Reminders →
-          </button>
-        </div>
-      )}
-
-      {/* Resurface Discovery Card (Random Unread Pick) */}
-      {showResurface && resurfaceBookmarks.length > 0 && (
-        <section className="cyber-card p-4 sm:p-5 rounded border border-cyber-yellow/40 bg-black/90 relative z-10 font-mono space-y-3 shadow-[0_0_15px_rgba(255,230,0,0.1)]">
-          <div className="flex items-center justify-between border-b border-cyber-yellow/20 pb-2.5">
-            <div className="flex items-center gap-2 text-cyber-yellow text-xs font-bold uppercase tracking-widest">
-              <Sparkles className="w-4 h-4 animate-pulse" />
-              <span>Resurface // Rediscovery Suggestions</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={loadResurface}
-                className="flex items-center gap-1 text-[10px] text-cyber-yellow hover:text-white border border-cyber-yellow/30 px-2 py-0.5 rounded cursor-pointer"
-                title="Shuffle rediscovery suggestions"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Shuffle</span>
-              </button>
-              <button
-                onClick={() => setShowResurface(false)}
-                className="text-slate-500 hover:text-white p-0.5"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {resurfaceBookmarks.map((rb) => (
-              <div
-                key={rb.id}
-                onClick={() => handleCardClick(rb.url)}
-                className="border border-white/10 hover:border-cyber-yellow bg-black p-3 rounded cursor-pointer group space-y-1 transition-all"
-              >
-                <span className="text-[8px] font-bold text-cyber-yellow uppercase tracking-widest block">
-                  📁 {rb.group}
-                </span>
-                <h5 className="text-xs font-bold text-white group-hover:text-cyber-yellow line-clamp-1">
-                  {rb.title}
-                </h5>
-                <p className="text-[10px] text-slate-400 truncate font-sans">
-                  {rb.url}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Navigation & Controls */}
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-        <div className="flex items-center gap-3 font-mono">
-          {activeGroup && (
-            <button 
-              onClick={() => setActiveGroup(null)}
-              className="flex items-center cyber-btn-secondary px-3.5 py-2 rounded text-xs"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
-              <span>All Groups</span>
-            </button>
-          )}
-          <h2 className="text-2xl font-black text-white tracking-widest uppercase flex items-center gap-2">
-            <span>{activeGroup ? activeGroup : 'Vault Groups'}</span>
-            {activeGroup && (
-              <button
-                onClick={() => openEditGroup(activeGroup)}
-                className="p-1 hover:bg-white/10 rounded text-cyber-cyan hover:text-white transition-colors cursor-pointer border border-cyber-cyan/35 bg-black"
-                title="Edit Group Title/Color"
-              >
-                <Edit className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </h2>
-        </div>
-
-        {/* Filter Tabs & Search Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto font-mono">
-          {/* Status Filter Tabs */}
-          <div className="flex items-center bg-black/80 border border-cyber-cyan/25 rounded p-1 text-xs">
-            <button
-              onClick={() => setFilterStatus('all')}
-              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
-                filterStatus === 'all' ? 'bg-cyber-cyan text-black' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setFilterStatus('unread')}
-              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
-                filterStatus === 'unread' ? 'bg-cyber-cyan text-black' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Unread
-            </button>
-            <button
-              onClick={() => setFilterStatus('read')}
-              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
-                filterStatus === 'read' ? 'bg-cyber-cyan text-black' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Read
-            </button>
-            <button
-              onClick={() => setFilterStatus('due')}
-              className={`px-3 py-1 rounded transition-colors font-bold uppercase ${
-                filterStatus === 'due' ? 'bg-cyber-pink text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Due
-            </button>
-          </div>
-
-          {/* Search bar */}
-          <div className="flex items-center gap-2.5 bg-black/80 border border-cyber-cyan/25 rounded px-3.5 py-2 w-full sm:w-64 max-w-sm focus-within:border-cyber-pink focus-within:shadow-[0_0_12px_rgba(255,0,127,0.2)] transition-all">
-            <span className="text-[10px] text-cyber-cyan/60 font-bold">[SYS.SEARCH]&gt;</span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search links..."
-              className="bg-transparent text-xs text-cyber-cyan placeholder-cyber-cyan/30 outline-none w-full font-bold"
-            />
-            {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery('')}
-                className="text-cyber-pink hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          <button 
-            onClick={() => { resetForm(); setShowAddModal(true) }}
-            className="flex items-center justify-center gap-1.5 cyber-btn-primary text-xs px-4.5 py-2.5 rounded active:scale-[0.98]"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Bookmark</span>
+            Due
           </button>
         </div>
       </section>
 
       {/* Main Grid View */}
-      <main className="relative z-10">
+      <div>
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-cyber-cyan" />
-            <span className="text-[10px] font-mono tracking-widest text-cyber-cyan/50 uppercase">Loading bookmarks...</span>
+          <div className="flex flex-col items-center justify-center py-24 text-[var(--color-text-muted)] gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-accent)]" />
+            <span className="text-sm">Loading bookmarks...</span>
           </div>
-        ) : searchQuery.trim() || activeGroup || filterStatus !== 'all' ? (
-          /* Bookmarks List View within Group, Search, or Status Filter */
+        ) : (
           <div>
-            {filteredBookmarks.length === 0 ? (
-              <div className="text-center py-20 cyber-card rounded border-dashed border-cyber-cyan/20 max-w-md mx-auto bg-black/80 font-mono">
-                <FolderOpen className="w-12 h-12 mx-auto text-cyber-cyan/40 mb-3" />
-                <h3 className="text-sm font-bold text-white uppercase mb-1">No bookmarks match filter</h3>
-                <p className="text-xs text-slate-400 max-w-xs mx-auto mb-4 font-sans">
-                  Try changing your status filter tabs or search terms.
+            {bookmarks.length === 0 ? (
+              /* Global Empty State - Onboarding */
+              <div className="max-w-2xl mx-auto mt-12 studio-card p-8 text-center space-y-6">
+                <div className="w-16 h-16 bg-[var(--color-bg-element)] text-[var(--color-accent)] rounded-full flex items-center justify-center mx-auto mb-2">
+                  <BookmarkCheck className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-bold text-[var(--color-text-primary)]">
+                  Welcome to Markbel
+                </h3>
+                <p className="text-[var(--color-text-muted)] text-sm max-w-md mx-auto leading-relaxed">
+                  Your clean, high-performance link vault. Save links, organize them in collections, and set reminders to read them later.
+                </p>
+                <div className="pt-4">
+                  <button
+                    onClick={() => { resetForm(); setShowAddModal(true) }}
+                    className="btn-primary px-6 py-2.5 flex items-center gap-2 mx-auto"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Save Your First Link</span>
+                  </button>
+                </div>
+              </div>
+            ) : filteredBookmarks.length === 0 ? (
+              /* Filter Empty State */
+              <div className="text-center py-20 studio-card rounded-md max-w-md mx-auto border-dashed">
+                <FolderOpen className="w-12 h-12 mx-auto text-[var(--color-text-muted)] mb-3 opacity-50" />
+                <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">No matches found</h3>
+                <p className="text-sm text-[var(--color-text-muted)] max-w-xs mx-auto mb-4">
+                  Try changing your search terms or filters.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 mt-6">
                 {filteredBookmarks.map((b) => (
                   <div 
                     key={b.id} 
                     onClick={() => handleCardClick(b.url)}
-                    className={`cyber-card cyber-card-hover rounded overflow-hidden flex flex-col justify-between group border-cyber-cyan/20 bg-black/85 relative cursor-pointer ${
-                      b.isRead ? 'opacity-75 hover:opacity-100' : ''
+                    className={`studio-card studio-card-hover flex flex-col justify-between group cursor-pointer ${
+                      b.isRead ? 'opacity-70 hover:opacity-100' : ''
                     }`}
                   >
-                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-cyber-cyan opacity-40 group-hover:bg-cyber-pink group-hover:opacity-100 transition-colors" />
-
                     <div>
                       {/* Image Thumbnail with Overlay Actions */}
-                      <div className="relative aspect-video bg-black border-b border-cyber-cyan/15 overflow-hidden">
-                        <div className="absolute inset-0 flex items-center justify-center text-cyber-cyan/30 bg-cyber-cyan/3 z-0">
-                          <LinkIcon className="w-8 h-8 opacity-25" />
+                      <div className="relative aspect-[1.91/1] bg-[var(--color-bg-element)] border-b border-[var(--color-border-default)] overflow-hidden">
+                        <div className="absolute inset-0 flex items-center justify-center text-[var(--color-text-muted)] opacity-20">
+                          <LinkIcon className="w-8 h-8" />
                         </div>
                         
                         {b.image && (
                           <img 
                             src={b.image} 
                             alt={b.title} 
-                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 z-10"
+                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             onError={(e) => { e.currentTarget.style.display = 'none' }}
                           />
                         )}
                         
                         {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-2 backdrop-blur-[2px] z-20">
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3 backdrop-blur-[2px]">
                           <button
                             onClick={(e) => { e.stopPropagation(); handleCopy(b.id, b.url); }}
-                            className="w-8 h-8 border border-cyber-cyan/40 bg-black hover:border-cyber-cyan text-cyber-cyan flex items-center justify-center cursor-pointer transition-all active:scale-95 shadow-[0_0_8px_rgba(0,240,255,0.2)]"
+                            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
                             title="Copy Link URL"
                           >
-                            {copiedId === b.id ? <Check className="w-4 h-4 text-cyber-green" /> : <Copy className="w-4 h-4" />}
+                            {copiedId === b.id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleTogglePin(b); }}
-                            className={`w-8 h-8 border bg-black flex items-center justify-center cursor-pointer transition-all active:scale-95 ${
-                              b.isPinned ? 'border-cyber-yellow text-cyber-yellow' : 'border-white/30 text-white hover:border-cyber-yellow'
+                            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                              b.isPinned ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-white/10 text-white hover:bg-white/20'
                             }`}
                             title={b.isPinned ? 'Unpin' : 'Pin to top'}
                           >
@@ -932,14 +1024,14 @@ export default function BookmarksPage() {
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); openTickTick(b); }}
-                            className="w-8 h-8 border border-[#617bfb]/50 bg-black hover:border-[#617bfb] text-[#617bfb] flex items-center justify-center cursor-pointer transition-all active:scale-95 font-bold"
+                            className="w-9 h-9 rounded-full bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 flex items-center justify-center transition-colors font-bold"
                             title="Push to TickTick Task"
                           >
                             ✓
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); openArchive(b); }}
-                            className="w-8 h-8 border border-cyber-yellow/40 bg-black hover:border-cyber-yellow text-cyber-yellow flex items-center justify-center cursor-pointer transition-all active:scale-95"
+                            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
                             title="Archive Bookmark"
                           >
                             <Archive className="w-4 h-4" />
@@ -947,61 +1039,56 @@ export default function BookmarksPage() {
                         </div>
 
                         {/* Top Badges */}
-                        <div className="absolute top-2.5 left-2.5 z-10 font-mono flex items-center gap-1.5">
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-cyber-cyan bg-black border border-cyber-cyan/30 px-2 py-0.5 shadow-sm">
-                            {b.group || 'Unsorted'}
-                          </span>
-
-                          {/* Unread dot indicator */}
-                          {!b.isRead && (
-                            <span className="w-2 h-2 rounded-full bg-cyber-cyan shadow-[0_0_8px_#00f0ff] animate-pulse" title="Unread" />
-                          )}
-
-                          {/* Pinned badge */}
-                          {b.isPinned && (
-                            <span className="text-[9px] font-bold text-cyber-yellow bg-black border border-cyber-yellow/40 px-1.5 py-0.5" title="Pinned">
-                              📌
+                        <div className="absolute top-2 left-2 right-2 flex items-start justify-between">
+                          <div className="flex flex-col gap-1.5 items-start">
+                            <span className="text-[10px] font-semibold text-[var(--color-bg-surface)] bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-sm shadow-sm truncate max-w-[120px]">
+                              {b.group || 'Unsorted'}
                             </span>
+                            {b.isPinned && (
+                              <span className="text-[10px] font-semibold text-amber-900 bg-amber-400/90 backdrop-blur-md px-1.5 py-0.5 rounded-sm shadow-sm" title="Pinned">
+                                📌
+                              </span>
+                            )}
+                          </div>
+                          {!b.isRead && (
+                            <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-accent)] shadow-[0_0_0_2px_rgba(255,255,255,0.9)]" title="Unread" />
                           )}
                         </div>
                       </div>
 
                       {/* Content details */}
-                      <div className="p-3.5 sm:p-5 space-y-1 sm:space-y-2">
-                        <div className="flex items-center justify-between font-mono">
+                      <div className="p-4 space-y-2">
+                        <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 truncate">
-                            <Sparkles className="w-3 h-3 text-cyber-yellow shrink-0" />
-                            <span className="text-[8px] sm:text-[9px] font-bold text-cyber-cyan/70 uppercase tracking-widest block truncate">
+                            <span className="text-[10px] font-medium text-[var(--color-text-muted)] truncate">
                               {getDomain(b.url)}
                             </span>
                           </div>
-
-                          {/* Read/Unread Toggle Button */}
                           <button
                             onClick={(e) => { e.stopPropagation(); handleToggleRead(b); }}
-                            className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase border transition-colors cursor-pointer ${
+                            className={`text-[10px] px-2 py-0.5 rounded-sm font-semibold transition-colors border ${
                               b.isRead 
-                                ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white' 
-                                : 'bg-cyber-cyan/10 border-cyber-cyan/40 text-cyber-cyan hover:bg-cyber-cyan/20'
+                                ? 'bg-transparent border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]' 
+                                : 'bg-[var(--color-accent)]/10 border-transparent text-[var(--color-accent)] hover:bg-[var(--color-accent)]/20'
                             }`}
                           >
                             {b.isRead ? 'Read ✓' : 'Mark Read'}
                           </button>
                         </div>
 
-                        <h4 className="font-bold text-xs sm:text-sm text-white leading-snug line-clamp-2 group-hover:text-cyber-cyan transition-colors font-sans">
+                        <h4 className="font-semibold text-sm text-[var(--color-text-primary)] leading-snug line-clamp-2">
                           {b.title}
                         </h4>
                         {b.description && (
-                          <p className="text-[10px] sm:text-xs text-slate-400 leading-relaxed line-clamp-2 sm:line-clamp-3 font-sans font-medium">
+                          <p className="text-xs text-[var(--color-text-muted)] leading-relaxed line-clamp-2">
                             {b.description}
                           </p>
                         )}
 
                         {/* Reminder Badge */}
                         {b.remindAt && (
-                          <div className="pt-1 flex items-center gap-1 text-[10px] text-cyber-pink font-mono font-bold">
-                            <Clock className="w-3 h-3" />
+                          <div className="pt-2 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+                            <Clock className="w-3.5 h-3.5" />
                             <span>Remind: {new Date(b.remindAt).toLocaleDateString()}</span>
                           </div>
                         )}
@@ -1009,25 +1096,24 @@ export default function BookmarksPage() {
                     </div>
 
                     {/* Card Footer actions */}
-                    <div className="px-3.5 pb-3.5 pt-2.5 sm:px-5 sm:pb-5 sm:pt-3 border-t border-cyber-cyan/10 flex items-center justify-between bg-black/40 font-mono relative z-20">
-                      <span className="text-[8px] sm:text-[9px] text-slate-500 font-bold uppercase tracking-wider">
-                        Saved {new Date(b.createdAt).toLocaleDateString()}
+                    <div className="px-4 py-3 border-t border-[var(--color-border-default)] flex items-center justify-between bg-[var(--color-bg-surface)]">
+                      <span className="text-[10px] text-[var(--color-text-muted)] font-medium">
+                        {new Date(b.createdAt).toLocaleDateString()}
                       </span>
-                      <div className="flex gap-1.5 sm:gap-2">
+                      <div className="flex gap-2">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeleteClick(b); }}
-                          className="text-slate-400 hover:text-red-400 hover:bg-red-955/20 rounded p-1 sm:p-1.5 transition-colors cursor-pointer border border-transparent hover:border-red-900/30"
-                          title="Delete Bookmark"
+                          className="text-[var(--color-text-muted)] hover:text-[var(--color-status-error)] hover:bg-red-50 rounded-md p-1.5 transition-colors"
+                          title="Delete"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); openEdit(b); }}
-                          className="flex items-center gap-1 sm:gap-1.5 border border-cyber-cyan/30 hover:border-cyber-cyan bg-cyber-cyan/5 text-cyber-cyan text-[10px] sm:text-xs px-2 py-1 sm:px-3 sm:py-1.5 rounded transition-all cursor-pointer font-bold active:scale-95"
-                          title="Edit Bookmark Details"
+                          className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-blue-50 rounded-md p-1.5 transition-colors"
+                          title="Edit"
                         >
-                          <span>Edit</span>
-                          <Edit className="w-3 h-3" />
+                          <Edit className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1036,189 +1122,77 @@ export default function BookmarksPage() {
               </div>
             )}
           </div>
-        ) : (
-          /* Folders Dashboard View */
-          <div>
-            {groups.length === 0 ? (
-              <div className="max-w-3xl mx-auto space-y-8 relative z-10 font-mono">
-                <div className="cyber-card p-6 sm:p-8 rounded border-2 border-cyber-cyan bg-black/90 relative overflow-hidden shadow-[0_0_20px_rgba(0,240,255,0.15)]">
-                  <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyber-cyan via-cyber-pink to-cyber-yellow" />
-                  
-                  <div className="space-y-5">
-                    <div className="flex items-center gap-2 text-cyber-cyan font-mono text-[10px] sm:text-xs font-bold uppercase tracking-widest">
-                      <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-pulse" />
-                      <span>System Initialization // Onboarding Guide</span>
-                    </div>
-                    
-                    <h3 className="text-lg sm:text-xl font-mono font-black text-white uppercase tracking-wider">
-                      Welcome to Markbel Bookmarks Vault
-                    </h3>
-                    
-                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans font-medium">
-                      Markbel is a high-performance link vault with task integration. Here is how to get started:
-                    </p>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pt-2 text-left">
-                      <div className="border border-cyber-cyan/20 p-5 rounded bg-cyan-950/5 hover:border-cyber-cyan/50 transition-all space-y-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-cyber-cyan font-bold text-xs sm:text-sm">01 //</span>
-                          <h4 className="font-bold text-white text-xs sm:text-sm uppercase tracking-wider">Quick URL-Only Saves</h4>
-                        </div>
-                        <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed font-sans font-medium">
-                          Paste any URL and click <strong>Create</strong>. Auto-scrapes metadata, OG images, and YouTube titles in the background.
-                        </p>
-                      </div>
-
-                      <div className="border border-cyber-yellow/20 p-5 rounded bg-yellow-950/5 hover:border-cyber-yellow/50 transition-all space-y-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-cyber-yellow font-bold text-xs sm:text-sm">02 //</span>
-                          <h4 className="font-bold text-white text-xs sm:text-sm uppercase tracking-wider">TickTick Tasks Integration</h4>
-                        </div>
-                        <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed font-sans font-medium">
-                          Connect TickTick in Settings. Turn reading bookmarks into real tasks with due dates and project organization.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 flex justify-center">
-                      <button
-                        onClick={() => { resetForm(); setShowAddModal(true) }}
-                        className="cyber-btn-primary px-6 sm:px-8 py-2.5 sm:py-3 rounded text-xs font-bold tracking-widest uppercase flex items-center gap-2 cursor-pointer active:scale-95"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Create First Bookmark</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
-                {groups.map((group) => {
-                  const borderGlow = getGroupColor(group.name)
-                  return (
-                    <div 
-                      key={group.name} 
-                      onClick={() => setActiveGroup(group.name)}
-                      className={`cyber-card cyber-card-hover p-4 sm:p-6 rounded cursor-pointer flex flex-col justify-between h-32 sm:h-40 border bg-black/85 group ${borderGlow}`}
-                    >
-                      <div className="flex items-center justify-between font-mono">
-                        <div className="w-10 h-10 border border-current flex items-center justify-center bg-black/50 text-inherit">
-                          <Folder className="w-5 h-5 fill-current" />
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[8px] sm:text-[9px] font-bold bg-black/85 border border-white/5 px-2 py-0.5 text-slate-300">
-                            {group.count} {group.count === 1 ? 'link' : 'links'}
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditGroup(group.name);
-                            }}
-                            className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-white/10"
-                            title="Edit Group"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 font-mono">
-                        <h4 className="font-bold text-sm sm:text-base text-white group-hover:text-cyber-cyan transition-colors truncate">
-                          {group.name}
-                        </h4>
-                        <p className="text-[9px] uppercase font-bold tracking-widest text-slate-500">
-                          View Group →
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {/* Quick create group card */}
-                <div 
-                  onClick={() => { resetForm(); setShowAddModal(true) }}
-                  className="border border-dashed border-cyber-cyan/25 hover:border-cyber-pink hover:bg-cyber-pink/3 transition-all duration-300 rounded h-32 sm:h-40 flex flex-col items-center justify-center text-center p-4 sm:p-6 cursor-pointer group font-mono"
-                >
-                  <PlusCircle className="w-7 h-7 sm:w-8 sm:h-8 text-cyber-cyan group-hover:text-cyber-pink mb-2 transition-colors duration-300" />
-                  <span className="text-xs text-cyber-cyan group-hover:text-cyber-pink font-bold transition-colors duration-300">
-                    New Group
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
         )}
+      </div>
+        </div>
       </main>
+    </div>
+
+      {/* User Guide Modal */}
+      <AnimatePresence>
+        {showUserGuide && (
+          <UserGuideModal onClose={closeUserGuide} />
+        )}
+      </AnimatePresence>
 
       {/* Add Bookmark Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-lg p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-cyan bg-black font-mono">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyber-cyan to-cyber-pink" />
-
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="studio-card w-full max-w-lg p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white uppercase">Add Bookmark</h3>
+              <h3 className="text-lg font-bold text-[var(--color-text-primary)]">Add Bookmark</h3>
               <button 
                 onClick={() => setShowAddModal(false)}
-                className="text-cyber-pink hover:text-white cursor-pointer bg-white/5 rounded p-1 transition-colors"
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded hover:bg-[var(--color-bg-hover)]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleAddSubmit} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">URL</label>
+              <div className="flex gap-2">
                 <input 
                   type="url"
                   value={formUrl}
                   onChange={(e) => setFormUrl(e.target.value)}
                   onBlur={handleUrlBlur}
-                  placeholder="https://example.com/resource" 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                  placeholder="https://example.com/..." 
+                  className="flex-1 studio-input px-3.5 py-2.5 text-sm"
                   required
                 />
+                {isScrapingMeta && (
+                  <div className="flex items-center justify-center px-3 border border-[var(--color-border-default)] rounded-md bg-[var(--color-bg-element)] text-[var(--color-text-muted)]">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </div>
+                )}
               </div>
 
               <div>
-                <div className="flex justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Title</label>
-                  {isScrapingMeta && <span className="text-[10px] text-cyber-green font-bold animate-pulse">Fetching info...</span>}
-                </div>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Title</label>
                 <input 
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   placeholder="Title details" 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                  className="w-full studio-input px-3.5 py-2.5 text-sm"
+                  required
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Description</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Description</label>
                 <textarea 
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Notes, takeaways..." 
+                  placeholder="Write description notes..." 
                   rows={2}
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm resize-none font-sans"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Optional Reading Reminder Date</label>
-                <input 
-                  type="datetime-local"
-                  value={formRemindAt}
-                  onChange={(e) => setFormRemindAt(e.target.value)}
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm text-cyber-cyan bg-black"
+                  className="w-full studio-input px-3.5 py-2.5 text-sm resize-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group</label>
                   <select
                     value={formGroup}
                     onChange={(e) => {
@@ -1227,44 +1201,44 @@ export default function BookmarksPage() {
                       const color = groupColors[val] || defaultGroupColors[val] || 'cyan';
                       setSelectedColor(color);
                     }}
-                    className="w-full cyber-input rounded px-3 py-2.5 text-sm bg-black text-cyber-cyan"
+                    className="w-full studio-input px-3 py-2.5 text-sm"
                   >
-                    <option value="Read Later" className="bg-black text-cyber-cyan">Read Later</option>
-                    <option value="Inspiration" className="bg-black text-cyber-cyan">Inspiration</option>
-                    <option value="Development" className="bg-black text-cyber-cyan">Development</option>
-                    <option value="Resources" className="bg-black text-cyber-cyan">Resources</option>
-                    <option value="Unsorted" className="bg-black text-cyber-cyan">Unsorted</option>
+                    <option value="Read Later">Read Later</option>
+                    <option value="Inspiration">Inspiration</option>
+                    <option value="Development">Development</option>
+                    <option value="Resources">Resources</option>
+                    <option value="Unsorted">Unsorted</option>
                     {groups.map(g => (
                       !['Read Later', 'Inspiration', 'Development', 'Resources', 'Unsorted'].includes(g.name) && (
-                        <option key={g.name} value={g.name} className="bg-black text-cyber-cyan">{g.name}</option>
+                        <option key={g.name} value={g.name}>{g.name}</option>
                       )
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Or Create Group</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Or Create Group</label>
                   <input 
                     type="text"
                     value={newGroupInput}
                     onChange={(e) => setNewGroupInput(e.target.value)}
                     placeholder="New Group Name" 
-                    className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                    className="w-full studio-input px-3.5 py-2.5 text-sm"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-cyber-cyan/15">
+              <div className="flex justify-end gap-3 pt-4 border-t border-[var(--color-border-default)]">
                 <button 
                   type="button" 
                   onClick={() => setShowAddModal(false)}
-                  className="cyber-btn-secondary px-4 py-2.5 rounded text-xs"
+                  className="btn-secondary px-4 py-2 text-xs"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
                   disabled={isSaving}
-                  className="cyber-btn-primary px-5 py-2.5 rounded text-xs font-bold"
+                  className="btn-primary px-5 py-2 text-xs font-bold"
                 >
                   {isSaving ? 'Saving...' : 'Create'}
                 </button>
@@ -1276,15 +1250,13 @@ export default function BookmarksPage() {
 
       {/* Edit Bookmark Modal */}
       {showEditModal && selectedBookmark && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-lg p-6 rounded relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 border-2 border-cyber-pink bg-black font-mono">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyber-pink to-cyber-cyan" />
-
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="studio-card w-full max-w-lg p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white uppercase">Edit Bookmark</h3>
+              <h3 className="text-lg font-bold text-[var(--color-text-primary)]">Edit Bookmark</h3>
               <button 
                 onClick={() => setShowEditModal(false)}
-                className="text-cyber-pink hover:text-white cursor-pointer bg-white/5 rounded p-1 transition-colors"
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded hover:bg-[var(--color-bg-hover)]"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1292,53 +1264,53 @@ export default function BookmarksPage() {
 
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">URL</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">URL</label>
                 <input 
                   type="url"
                   value={formUrl}
                   onChange={(e) => setFormUrl(e.target.value)}
                   placeholder="https://example.com/..." 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                  className="w-full studio-input px-3.5 py-2.5 text-sm"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Title</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Title</label>
                 <input 
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   placeholder="Title details" 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                  className="w-full studio-input px-3.5 py-2.5 text-sm"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Description</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Description</label>
                 <textarea 
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
                   placeholder="Write description notes..." 
                   rows={2}
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm resize-none font-sans"
+                  className="w-full studio-input px-3.5 py-2.5 text-sm resize-none"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Reminder Date & Time</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Reminder Date & Time</label>
                 <input 
                   type="datetime-local"
                   value={formRemindAt}
                   onChange={(e) => setFormRemindAt(e.target.value)}
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm text-cyber-cyan bg-black"
+                  className="w-full studio-input px-3.5 py-2.5 text-sm"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Group</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group</label>
                   <select
                     value={formGroup}
                     onChange={(e) => {
@@ -1347,37 +1319,37 @@ export default function BookmarksPage() {
                       const color = groupColors[val] || defaultGroupColors[val] || 'cyan';
                       setSelectedColor(color);
                     }}
-                    className="w-full cyber-input rounded px-3 py-2.5 text-sm bg-black text-cyber-cyan"
+                    className="w-full studio-input px-3 py-2.5 text-sm"
                   >
                     {groups.map(g => (
-                      <option key={g.name} value={g.name} className="bg-black text-cyber-cyan">{g.name}</option>
+                      <option key={g.name} value={g.name}>{g.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Or Move to New</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Or Move to New</label>
                   <input 
                     type="text"
                     value={newGroupInput}
                     onChange={(e) => setNewGroupInput(e.target.value)}
                     placeholder="New Group Name" 
-                    className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                    className="w-full studio-input px-3.5 py-2.5 text-sm"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-cyber-cyan/15">
+              <div className="flex justify-end gap-3 pt-4 border-t border-[var(--color-border-default)]">
                 <button 
                   type="button" 
                   onClick={() => setShowEditModal(false)}
-                  className="cyber-btn-secondary px-4 py-2.5 rounded text-xs"
+                  className="btn-secondary px-4 py-2 text-xs"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
                   disabled={isSaving}
-                  className="cyber-btn-primary px-5 py-2.5 rounded text-xs font-bold"
+                  className="btn-primary px-5 py-2 text-xs font-bold"
                 >
                   {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -1389,16 +1361,16 @@ export default function BookmarksPage() {
 
       {/* Push to TickTick Modal */}
       {showTickTickModal && bookmarkToPush && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-[#617bfb] bg-black font-mono">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="studio-card w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 text-[#617bfb]">
-                <span className="font-black text-lg">✓</span>
-                <h3 className="text-sm font-black uppercase tracking-wider text-white">Push to TickTick Task</h3>
+              <div className="flex items-center gap-2 text-blue-600">
+                <span className="font-bold text-lg">✓</span>
+                <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Push to TickTick Task</h3>
               </div>
               <button 
                 onClick={() => setShowTickTickModal(false)}
-                className="text-slate-400 hover:text-white cursor-pointer"
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded hover:bg-[var(--color-bg-hover)]"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1406,32 +1378,32 @@ export default function BookmarksPage() {
 
             {!ticktickConnected ? (
               <div className="space-y-4 py-2 text-center">
-                <p className="text-xs text-slate-300 font-sans">
+                <p className="text-xs text-[var(--color-text-muted)]">
                   Your TickTick account is not connected yet. Connect your account in Settings to push bookmarks as tasks.
                 </p>
                 <button
                   onClick={() => { setShowTickTickModal(false); navigate('/settings'); }}
-                  className="cyber-btn-primary px-4 py-2 rounded text-xs font-bold uppercase"
+                  className="btn-primary px-4 py-2 text-xs font-bold"
                 >
                   Open Settings
                 </button>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="bg-black/60 border border-white/10 p-3 rounded text-xs space-y-1">
-                  <span className="text-[10px] text-cyber-cyan font-bold block uppercase">Bookmark Title</span>
-                  <span className="text-white font-bold block truncate">{bookmarkToPush.title}</span>
+                <div className="bg-[var(--color-bg-element)] border border-[var(--color-border-default)] p-3 rounded-md text-xs space-y-1">
+                  <span className="text-[10px] text-[var(--color-text-muted)] font-semibold block uppercase">Bookmark Title</span>
+                  <span className="text-[var(--color-text-primary)] font-semibold block truncate">{bookmarkToPush.title}</span>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 mb-1 block">Select TickTick Project</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1 block">Select TickTick Project</label>
                   <select
                     value={selectedTicktickProject}
                     onChange={(e) => setSelectedTicktickProject(e.target.value)}
-                    className="w-full cyber-input rounded px-3 py-2.5 text-sm bg-black text-[#617bfb]"
+                    className="w-full studio-input px-3 py-2.5 text-sm"
                   >
                     {ticktickProjects.map((p) => (
-                      <option key={p.id} value={p.id} className="bg-black text-[#617bfb]">
+                      <option key={p.id} value={p.id}>
                         📁 {p.name}
                       </option>
                     ))}
@@ -1439,20 +1411,20 @@ export default function BookmarksPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 mb-1 block">Due Date (Optional)</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1 block">Due Date (Optional)</label>
                   <input
                     type="date"
                     value={ticktickDueDate}
                     onChange={(e) => setTicktickDueDate(e.target.value)}
-                    className="w-full cyber-input rounded px-3.5 py-2.5 text-sm bg-black text-white"
+                    className="w-full studio-input px-3.5 py-2.5 text-sm"
                   />
                 </div>
 
-                <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
+                <div className="flex justify-end gap-3 pt-3 border-t border-[var(--color-border-default)]">
                   <button
                     type="button"
                     onClick={() => setShowTickTickModal(false)}
-                    className="cyber-btn-secondary px-4 py-2 rounded text-xs"
+                    className="btn-secondary px-4 py-2 text-xs"
                   >
                     Cancel
                   </button>
@@ -1460,7 +1432,7 @@ export default function BookmarksPage() {
                     type="button"
                     onClick={confirmPushTickTick}
                     disabled={isPushingTicktick}
-                    className="cyber-btn-primary px-5 py-2 rounded text-xs font-bold uppercase flex items-center gap-1.5"
+                    className="btn-primary px-5 py-2 text-xs font-bold flex items-center gap-1.5"
                   >
                     {isPushingTicktick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Push Task</span>}
                   </button>
@@ -1473,49 +1445,49 @@ export default function BookmarksPage() {
 
       {/* Archive Confirmation Modal */}
       {showArchiveModal && bookmarkToArchive && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-cyber-yellow bg-black font-mono">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="studio-card w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 text-cyber-yellow">
+              <div className="flex items-center gap-2 text-amber-500">
                 <Archive className="w-5 h-5" />
-                <h3 className="text-sm font-bold uppercase text-white">Archive Bookmark</h3>
+                <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Archive Bookmark</h3>
               </div>
               <button 
                 onClick={() => setShowArchiveModal(false)}
-                className="text-slate-400 hover:text-white cursor-pointer"
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded hover:bg-[var(--color-bg-hover)]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-4">
-              <p className="text-xs text-slate-300 font-sans">
-                Move <strong>"{bookmarkToArchive.title}"</strong> to cold storage archive?
+              <p className="text-sm text-[var(--color-text-muted)]">
+                Move <strong>"{bookmarkToArchive.title}"</strong> to archive?
               </p>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">Archive Sub-Group (e.g. archive-dev, archive-fun)</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Archive Sub-Group (Optional)</label>
                 <input 
                   type="text"
                   value={archiveGroupInput}
                   onChange={(e) => setArchiveGroupInput(e.target.value)}
                   placeholder="archive-dev" 
-                  className="w-full cyber-input rounded px-3.5 py-2.5 text-sm text-cyber-yellow"
+                  className="w-full studio-input px-3.5 py-2.5 text-sm"
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-cyber-yellow/20">
+              <div className="flex justify-end gap-3 pt-3 border-t border-[var(--color-border-default)]">
                 <button 
                   type="button" 
                   onClick={() => setShowArchiveModal(false)}
-                  className="cyber-btn-secondary px-4 py-2 rounded text-xs"
+                  className="btn-secondary px-4 py-2 text-xs"
                 >
                   Cancel
                 </button>
                 <button 
                   type="button" 
                   onClick={confirmArchive}
-                  className="cyber-btn-primary px-5 py-2 rounded text-xs font-bold uppercase"
+                  className="bg-amber-100 text-amber-700 hover:bg-amber-200 px-5 py-2 rounded-md text-xs font-bold transition-colors"
                 >
                   Confirm Archive
                 </button>
@@ -1527,22 +1499,22 @@ export default function BookmarksPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && bookmarkToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-mono">
-          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-red-500 bg-black">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="studio-card w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-red-400 uppercase">Confirm Delete</h3>
-              <button onClick={() => setShowDeleteModal(false)} className="text-slate-400 hover:text-white">
+              <h3 className="text-sm font-bold text-[var(--color-status-error)]">Confirm Delete</h3>
+              <button onClick={() => setShowDeleteModal(false)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded hover:bg-[var(--color-bg-hover)]">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-slate-300 mb-5 font-sans">
+            <p className="text-sm text-[var(--color-text-muted)] mb-5">
               Permanently delete <strong>"{bookmarkToDelete.title}"</strong>?
             </p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setShowDeleteModal(false)} className="cyber-btn-secondary px-4 py-2 rounded text-xs">
+              <button onClick={() => setShowDeleteModal(false)} className="btn-secondary px-4 py-2 text-xs">
                 Cancel
               </button>
-              <button onClick={confirmDelete} className="cyber-btn-danger px-5 py-2 rounded text-xs font-bold">
+              <button onClick={confirmDelete} className="btn-danger px-5 py-2 text-xs font-bold">
                 Delete
               </button>
             </div>
@@ -1552,11 +1524,11 @@ export default function BookmarksPage() {
 
       {/* Edit Group Modal */}
       {showEditGroupModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-mono">
-          <div className="cyber-card w-full max-w-md p-6 rounded relative shadow-2xl border-2 border-cyber-cyan bg-black">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="studio-card w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-white uppercase">Edit Group Name</h3>
-              <button onClick={() => setShowEditGroupModal(false)} className="text-slate-400 hover:text-white">
+              <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Edit Group Name</h3>
+              <button onClick={() => setShowEditGroupModal(false)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded hover:bg-[var(--color-bg-hover)]">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1565,14 +1537,14 @@ export default function BookmarksPage() {
                 type="text"
                 value={formGroupName}
                 onChange={(e) => setFormGroupName(e.target.value)}
-                className="w-full cyber-input rounded px-3.5 py-2.5 text-sm"
+                className="w-full studio-input px-3.5 py-2.5 text-sm"
                 required
               />
-              <div className="flex justify-end gap-3 pt-3 border-t border-cyber-cyan/15">
-                <button type="button" onClick={() => setShowEditGroupModal(false)} className="cyber-btn-secondary px-4 py-2 rounded text-xs">
+              <div className="flex justify-end gap-3 pt-3 border-t border-[var(--color-border-default)]">
+                <button type="button" onClick={() => setShowEditGroupModal(false)} className="btn-secondary px-4 py-2 text-xs">
                   Cancel
                 </button>
-                <button type="submit" disabled={isSavingGroup} className="cyber-btn-primary px-5 py-2 rounded text-xs font-bold">
+                <button type="submit" disabled={isSavingGroup} className="btn-primary px-5 py-2 text-xs font-bold">
                   Save
                 </button>
               </div>
