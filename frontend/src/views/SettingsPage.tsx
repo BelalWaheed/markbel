@@ -22,6 +22,7 @@ export default function SettingsPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const isNative = navigator.userAgent.includes("Electron") || !!(window as any).ReactNativeWebView;
 
   const [ticktickConnected, setTicktickConnected] = useState(false);
   const [ticktickLoading, setTicktickLoading] = useState(true);
@@ -367,7 +368,8 @@ export default function SettingsPage() {
       </section>
 
       {/* Web Push Notifications Card */}
-      <section className="studio-card p-6 relative space-y-5">
+      {!isNative && (
+        <section className="studio-card p-6 relative space-y-5">
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] pb-4">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 bg-amber-100 border border-amber-200 text-amber-600 flex items-center justify-center font-bold rounded">
@@ -443,97 +445,9 @@ export default function SettingsPage() {
               </button>
             )}
           </div>
-
-          {/* cron-job.org Setup Guide */}
-          <div className="border border-[var(--color-border-default)] bg-[var(--color-bg-element)] p-4 rounded-md space-y-3 pt-3">
-            <div className="flex items-center gap-2 text-[var(--color-text-primary)] text-xs font-bold uppercase tracking-wide">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-              <span>cron-job.org Trigger Endpoints for All Devices</span>
-            </div>
-            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-              To trigger automated notifications across all your devices, set up
-              free cron jobs at{" "}
-              <a
-                href="https://console.cron-job.org/jobs"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--color-accent)] underline"
-              >
-                console.cron-job.org
-              </a>
-              :
-            </p>
-
-            <div className="space-y-2 text-xs">
-              <div className="bg-white p-2.5 rounded-md border border-[var(--color-border-default)] flex items-center justify-between gap-2 shadow-sm">
-                <div className="truncate">
-                  <span className="text-[10px] text-[var(--color-text-muted)] block font-bold uppercase mb-1">
-                    1. Daily Digest (Set schedule: Daily 9:00 AM)
-                  </span>
-                  <code className="text-[11px] text-[var(--color-text-primary)] truncate block font-mono bg-[var(--color-bg-element)] px-1 py-0.5 rounded">
-                    {appOrigin}/api/notifications/digest
-                  </code>
-                </div>
-                <button
-                  onClick={() =>
-                    handleCopy(
-                      `${appOrigin}/api/notifications/digest`,
-                      "digest",
-                    )
-                  }
-                  className="btn-secondary p-1.5 rounded shrink-0"
-                  title="Copy Digest URL"
-                >
-                  {copiedUrl === "digest" ? (
-                    <Check className="w-3.5 h-3.5 text-[var(--color-status-success)]" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </div>
-
-              <div className="bg-white p-2.5 rounded-md border border-[var(--color-border-default)] flex items-center justify-between gap-2 shadow-sm">
-                <div className="truncate">
-                  <span className="text-[10px] text-[var(--color-text-muted)] block font-bold uppercase mb-1">
-                    2. Due Reminder Check (Set schedule: Every 30 mins)
-                  </span>
-                  <code className="text-[11px] text-[var(--color-text-primary)] truncate block font-mono bg-[var(--color-bg-element)] px-1 py-0.5 rounded">
-                    {appOrigin}/api/notifications/due-check
-                  </code>
-                </div>
-                <button
-                  onClick={() =>
-                    handleCopy(
-                      `${appOrigin}/api/notifications/due-check`,
-                      "due",
-                    )
-                  }
-                  className="btn-secondary p-1.5 rounded shrink-0"
-                  title="Copy Due Check URL"
-                >
-                  {copiedUrl === "due" ? (
-                    <Check className="w-3.5 h-3.5 text-[var(--color-status-success)]" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <p className="text-[11px] text-[var(--color-text-muted)]">
-              * In cron-job.org, add custom header:{" "}
-              <code className="bg-[var(--color-bg-elevated)] px-1 rounded">
-                Authorization: Bearer YOUR_CRON_SECRET
-              </code>{" "}
-              or append{" "}
-              <code className="bg-[var(--color-bg-elevated)] px-1 rounded">
-                ?secret=YOUR_CRON_SECRET
-              </code>{" "}
-              to the URL.
-            </p>
-          </div>
         </div>
       </section>
+      )}
     </div>
   );
 }
