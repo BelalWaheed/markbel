@@ -1,2 +1,2 @@
-import app from '../../../backend/src/server.js';
+import app from 'markbel-backend/src/server.js';
 export default app;

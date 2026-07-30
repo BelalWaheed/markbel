@@ -30,7 +30,8 @@
   "include": [
     "src",
     "api",
-    "vite.config.ts"
+    "vite.config.ts",
+    "../../../backend/src"
   ],
   "exclude": ["node_modules", "dist"]
 }
