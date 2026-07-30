@@ -96,6 +96,18 @@ app.whenReady().then(() => {
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open Markbel', click: () => mainWindow?.show() },
     { type: 'separator' },
+    { 
+      label: 'Launch on Startup', 
+      type: 'checkbox', 
+      checked: app.getLoginItemSettings().openAtLogin,
+      click: (item) => {
+        app.setLoginItemSettings({
+          openAtLogin: item.checked,
+          path: app.getPath('exe')
+        });
+      }
+    },
+    { type: 'separator' },
     { label: 'Quit', click: () => {
       isQuitting = true
       app.quit()

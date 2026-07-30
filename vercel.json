@@ -13,12 +13,8 @@
       "use": "@vercel/node"
     }
   ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "backend/api/index.ts" },
-    { "src": "/sw.js", "dest": "apps/web/dist/sw.js" },
-    { "src": "/manifest.json", "dest": "apps/web/dist/manifest.json" },
-    { "src": "/logo.png", "dest": "apps/web/dist/logo.png" },
-    { "src": "/assets/(.*)", "dest": "apps/web/dist/assets/$1" },
-    { "src": "/(.*)", "dest": "apps/web/dist/index.html" }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/backend/api/index.ts" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
