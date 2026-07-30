@@ -4,30 +4,21 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
-import webpush from "web-push";
 import { connectToDatabase } from "./db.js";
 import User from "./models/User.js";
 import Bookmark from "./models/Bookmark.js";
-import PushSubscription from "./models/PushSubscription.js";
-import { getTickTickAuthUrl, exchangeCodeForTokens, refreshTickTickToken, listTickTickProjects, getOrCreateMarkbelProject, createTickTickTask, getTickTickTask, } from "./ticktick.js";
+import syncRoutes from "./routes/sync.js";
+import deviceRoutes from "./routes/device.js";
+import notificationRoutes from "./routes/notifications.js";
+import metadataRoutes from "./routes/metadata.js";
+import { getTickTickAuthUrl, exchangeCodeForTokens, refreshTickTickToken, listTickTickProjects, getOrCreateMarkbelProject, createTickTickTask, } from "./ticktick.js";
 import { authMiddleware } from "./middleware/auth.js";
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 const SALT_ROUNDS = 10;
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_for_local_dev";
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
-const VAPID_EMAIL = process.env.VAPID_EMAIL || "mailto:admin@markbel.app";
 const CRON_SECRET = process.env.CRON_SECRET || "fallback_cron_secret";
-if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-    try {
-        webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-    }
-    catch (err) {
-        console.warn("[VAPID Setup Warning]:", err);
-    }
-}
 app.use(cors());
 app.use(express.json());
 const authLimiter = rateLimit({
@@ -52,6 +43,13 @@ app.use(async (req, res, next) => {
             .json({ error: "Database connection failed: " + err.message });
     }
 });
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ROUTES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.use("/api/sync", syncRoutes);
+app.use("/api/devices", deviceRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/metadata", metadataRoutes);
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // USER AUTH ROUTES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -620,7 +618,11 @@ app.patch("/api/bookmarks/unarchive", authMiddleware, async (req, res) => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // GET /api/integrations/ticktick/auth
 app.get("/api/integrations/ticktick/auth", authMiddleware, (req, res) => {
-    const url = getTickTickAuthUrl(req.userId || "");
+    const platform = req.query.platform || "web";
+    const stateObj = JSON.stringify({ userId: req.userId || "", platform });
+    // Base64 encode the state so it's safely passed through TickTick's OAuth
+    const encodedState = Buffer.from(stateObj).toString('base64');
+    const url = getTickTickAuthUrl(encodedState);
     res.json({ url });
 });
 // GET /api/integrations/ticktick/callback
@@ -646,8 +648,18 @@ app.get("/api/integrations/ticktick/callback", async (req, res) => {
         const { access_token, refresh_token, expires_in } = await exchangeCodeForTokens(code);
         const expiresAt = Date.now() + expires_in * 1000;
         let user;
+        let platform = 'web';
         if (state) {
-            user = await User.findOne({ id: state });
+            try {
+                const decodedState = Buffer.from(state, 'base64').toString('utf-8');
+                const parsed = JSON.parse(decodedState);
+                platform = parsed.platform || 'web';
+                user = await User.findOne({ id: parsed.userId });
+            }
+            catch (e) {
+                // Fallback for old states
+                user = await User.findOne({ id: state });
+            }
         }
         if (!user && req.headers.authorization) {
             const token = req.headers.authorization.split(" ")[1];
@@ -655,7 +667,6 @@ app.get("/api/integrations/ticktick/callback", async (req, res) => {
             user = await User.findOne({ id: decoded.id });
         }
         if (!user) {
-            // Fallback: take the single user if only one exists
             user = await User.findOne();
         }
         if (user) {
@@ -671,6 +682,10 @@ app.get("/api/integrations/ticktick/callback", async (req, res) => {
             }
             await user.save();
         }
+        let redirectUrl = '/settings?ticktick=connected';
+        if (platform === 'desktop' || platform === 'mobile') {
+            redirectUrl = 'markbel://settings?ticktick=connected';
+        }
         res.send(`
       <html>
         <body style="background:#050508;color:#00f0ff;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;">
@@ -678,7 +693,7 @@ app.get("/api/integrations/ticktick/callback", async (req, res) => {
           <p>Redirecting to Markbel Settings...</p>
           <script>
             setTimeout(() => {
-              window.location.href = '/settings?ticktick=connected';
+              window.location.href = '${redirectUrl}';
             }, 1500);
           </script>
         </body>
@@ -804,243 +819,6 @@ app.post("/api/integrations/ticktick/push", authMiddleware, async (req, res) => 
     }
     catch (err) {
         console.error("[TickTick Push Error]:", err);
-        res.status(500).json({ error: err.message || "Internal Server Error" });
-    }
-});
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// WEB PUSH & NOTIFICATIONS ROUTES (CRON TRIGGERED)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// GET /api/push/vapid-key
-app.get("/api/push/vapid-key", (req, res) => {
-    res.json({ publicKey: VAPID_PUBLIC_KEY });
-});
-// POST /api/push/subscribe
-app.post("/api/push/subscribe", authMiddleware, async (req, res) => {
-    try {
-        const { endpoint, keys, deviceLabel } = req.body;
-        if (!endpoint || !keys) {
-            res.status(400).json({ error: "Endpoint and keys are required" });
-            return;
-        }
-        await PushSubscription.updateOne({ userId: req.userId, endpoint }, {
-            $set: {
-                id: crypto.randomUUID(),
-                userId: req.userId,
-                endpoint,
-                keys,
-                deviceLabel: deviceLabel || "Web Client",
-                createdAt: new Date().toISOString(),
-            },
-        }, { upsert: true });
-        res.json({ success: true });
-    }
-    catch (err) {
-        res.status(500).json({ error: err.message || "Internal Server Error" });
-    }
-});
-// DELETE /api/push/unsubscribe
-app.delete("/api/push/unsubscribe", authMiddleware, async (req, res) => {
-    try {
-        const { endpoint } = req.body;
-        if (endpoint) {
-            await PushSubscription.deleteOne({ userId: req.userId, endpoint });
-        }
-        else {
-            await PushSubscription.deleteMany({ userId: req.userId });
-        }
-        res.json({ success: true });
-    }
-    catch (err) {
-        res.status(500).json({ error: err.message || "Internal Server Error" });
-    }
-});
-// Helper: send push payload safely
-async function sendPushNotificationSafely(sub, payload) {
-    try {
-        if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY)
-            return;
-        await webpush.sendNotification({
-            endpoint: sub.endpoint,
-            keys: sub.keys,
-        }, JSON.stringify(payload));
-    }
-    catch (err) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-            await PushSubscription.deleteOne({ endpoint: sub.endpoint });
-        }
-        else {
-            console.warn("[Push Notification Error]:", err.message);
-        }
-    }
-}
-// POST /api/push/send-test (1-Click Test Push Notification)
-app.post("/api/push/send-test", authMiddleware, async (req, res) => {
-    try {
-        const subscriptions = await PushSubscription.find({ userId: req.userId }).lean();
-        if (subscriptions.length === 0) {
-            res.status(400).json({ error: "No push subscriptions found for your account. Enable push notifications first!" });
-            return;
-        }
-        const payload = {
-            title: "Markbel Push Test 🔖",
-            body: "Instant Push Notification test successful! Notifications are working on this device.",
-            url: "/",
-        };
-        let count = 0;
-        for (const sub of subscriptions) {
-            await sendPushNotificationSafely(sub, payload);
-            count++;
-        }
-        res.json({ success: true, sent: count });
-    }
-    catch (err) {
-        res.status(500).json({ error: err.message || "Internal Server Error" });
-    }
-});
-// POST /api/notifications/digest (Triggered by cron-job.org)
-app.post("/api/notifications/digest", async (req, res) => {
-    try {
-        const authHeader = req.headers.authorization;
-        const secretQuery = req.query.secret;
-        const isAuthorized = (authHeader && authHeader === `Bearer ${CRON_SECRET}`) ||
-            secretQuery === CRON_SECRET;
-        if (!isAuthorized) {
-            res.status(403).json({ error: "Unauthorized cron trigger" });
-            return;
-        }
-        const subscriptions = await PushSubscription.find().lean();
-        let sentCount = 0;
-        const userSubsMap = new Map();
-        subscriptions.forEach((sub) => {
-            const list = userSubsMap.get(sub.userId) || [];
-            list.push(sub);
-            userSubsMap.set(sub.userId, list);
-        });
-        for (const [userId, subs] of userSubsMap.entries()) {
-            const unreadCount = await Bookmark.countDocuments({
-                userId,
-                isArchived: { $ne: true },
-                isRead: { $ne: true },
-            });
-            if (unreadCount === 0)
-                continue;
-            const now = new Date().toISOString();
-            const dueCount = await Bookmark.countDocuments({
-                userId,
-                isArchived: { $ne: true },
-                isRead: { $ne: true },
-                remindAt: { $ne: "", $lte: now },
-            });
-            let bodyText = `You have ${unreadCount} unread bookmark${unreadCount > 1 ? "s" : ""}.`;
-            if (dueCount > 0) {
-                bodyText += ` ${dueCount} due today!`;
-            }
-            const payload = {
-                title: "Markbel Daily Digest 🔖",
-                body: bodyText,
-                url: "/",
-            };
-            for (const sub of subs) {
-                await sendPushNotificationSafely(sub, payload);
-                sentCount++;
-            }
-        }
-        res.json({ success: true, notificationsSent: sentCount });
-    }
-    catch (err) {
-        console.error("[Cron Digest Error]:", err);
-        res.status(500).json({ error: err.message || "Internal Server Error" });
-    }
-});
-// POST /api/notifications/due-check (Triggered by cron-job.org every 30m)
-app.post("/api/notifications/due-check", async (req, res) => {
-    try {
-        const authHeader = req.headers.authorization;
-        const secretQuery = req.query.secret;
-        const isAuthorized = (authHeader && authHeader === `Bearer ${CRON_SECRET}`) ||
-            secretQuery === CRON_SECRET;
-        if (!isAuthorized) {
-            res.status(403).json({ error: "Unauthorized cron trigger" });
-            return;
-        }
-        const now = new Date().toISOString();
-        const subscriptions = await PushSubscription.find().lean();
-        let sentCount = 0;
-        const userSubsMap = new Map();
-        subscriptions.forEach((sub) => {
-            const list = userSubsMap.get(sub.userId) || [];
-            list.push(sub);
-            userSubsMap.set(sub.userId, list);
-        });
-        for (const [userId, subs] of userSubsMap.entries()) {
-            const dueBookmarks = await Bookmark.find({
-                userId,
-                isArchived: { $ne: true },
-                isRead: { $ne: true },
-                remindAt: { $ne: "", $lte: now },
-            }).lean();
-            if (dueBookmarks.length === 0)
-                continue;
-            const payload = {
-                title: "Markbel Due Reminders ⏰",
-                body: `You have ${dueBookmarks.length} bookmark${dueBookmarks.length > 1 ? "s" : ""} waiting to be read!`,
-                url: "/?filter=due",
-            };
-            for (const sub of subs) {
-                await sendPushNotificationSafely(sub, payload);
-                sentCount++;
-            }
-        }
-        // --- TickTick Two-Way Sync (Background) ---
-        const usersWithTickTick = await User.find({ ticktickAccessToken: { $ne: "" } }).lean();
-        for (const user of usersWithTickTick) {
-            if (!user.ticktickAccessToken)
-                continue;
-            let token = user.ticktickAccessToken;
-            if (user.ticktickTokenExpiresAt && Date.now() > user.ticktickTokenExpiresAt - 60000) {
-                if (user.ticktickRefreshToken) {
-                    try {
-                        const refreshed = await refreshTickTickToken(user.ticktickRefreshToken);
-                        await User.updateOne({ id: user.id }, {
-                            $set: {
-                                ticktickAccessToken: refreshed.access_token,
-                                ticktickRefreshToken: refreshed.refresh_token,
-                                ticktickTokenExpiresAt: Date.now() + refreshed.expires_in * 1000,
-                            },
-                        });
-                        token = refreshed.access_token;
-                    }
-                    catch (e) {
-                        console.error("[TickTick Background Refresh Error]:", e);
-                        continue;
-                    }
-                }
-            }
-            const syncBookmarks = await Bookmark.find({
-                userId: user.id,
-                isRead: { $ne: true },
-                ticktickTaskId: { $exists: true, $ne: "" },
-                ticktickProjectId: { $exists: true, $ne: "" },
-            });
-            for (const bm of syncBookmarks) {
-                try {
-                    const taskData = await getTickTickTask(token, bm.ticktickProjectId, bm.ticktickTaskId);
-                    // TickTick status 2 is completed, status -1 is archived/deleted
-                    if (taskData && taskData.status !== 0) {
-                        bm.isRead = true;
-                        bm.readAt = new Date().toISOString();
-                        await bm.save();
-                    }
-                }
-                catch (e) {
-                    console.error(`[TickTick Sync Error for Task ${bm.ticktickTaskId}]:`, e);
-                }
-            }
-        }
-        res.json({ success: true, notificationsSent: sentCount });
-    }
-    catch (err) {
-        console.error("[Cron Due Check Error]:", err);
         res.status(500).json({ error: err.message || "Internal Server Error" });
     }
 });

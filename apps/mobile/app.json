@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Markbel",
+    "slug": "markbel",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f0efea"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.obel.markbel",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#f0efea"
+      },
+      "package": "com.obel.markbel"
+    },
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
+    "scheme": "markbel",
+    "plugins": [
+      "expo-asset",
+      [
+        "expo-share-intent",
+        {
+          "iosExtensionName": "Save to Markbel",
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1
+          },
+          "androidIntentFilters": [
+            "text/*"
+          ]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ab233480-b7c7-4326-b3db-e04f0e5379d5"
+      }
+    }
+  }
+}

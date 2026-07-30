@@ -1,2 +1,25 @@
 node_modules
 .env
+.env.*
+!.env.example
+.DS_Store
+
+# Build Outputs
+dist/
+out/
+build/
+.next/
+.expo/
+*.tsbuildinfo
+*.log
+
+# Desktop Specific
+release/
+apps/desktop/dist/
+apps/desktop/out/
+apps/desktop/build/
+
+# Mobile Specific
+apps/mobile/.expo/
+apps/mobile/android/app/build/
+apps/mobile/ios/build/

@@ -18,6 +18,8 @@ export interface IBookmark {
   ticktickProjectId?: string
   createdAt: string
   updatedAt: string
+  version: number
+  deletedAt?: string | null
 }
 
 export interface IBookmarkDocument extends IBookmark, Document {}
@@ -40,7 +42,9 @@ const BookmarkSchema = new Schema<IBookmarkDocument>(
     ticktickTaskId: { type: String, default: '' },
     ticktickProjectId: { type: String, default: '' },
     createdAt: { type: String, required: true },
-    updatedAt: { type: String, required: true }
+    updatedAt: { type: String, required: true },
+    version: { type: Number, required: true, default: 0 },
+    deletedAt: { type: String, default: null }
   },
   {
     toJSON: {

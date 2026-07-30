@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "frontend/package.json",
+      "src": "apps/web/package.json",
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist"
@@ -15,10 +15,10 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "backend/api/index.ts" },
-    { "src": "/sw.js", "dest": "frontend/sw.js" },
-    { "src": "/manifest.json", "dest": "frontend/manifest.json" },
-    { "src": "/logo.png", "dest": "frontend/logo.png" },
-    { "src": "/assets/(.*)", "dest": "frontend/assets/$1" },
-    { "src": "/(.*)", "dest": "frontend/index.html" }
+    { "src": "/sw.js", "dest": "apps/web/dist/sw.js" },
+    { "src": "/manifest.json", "dest": "apps/web/dist/manifest.json" },
+    { "src": "/logo.png", "dest": "apps/web/dist/logo.png" },
+    { "src": "/assets/(.*)", "dest": "apps/web/dist/assets/$1" },
+    { "src": "/(.*)", "dest": "apps/web/dist/index.html" }
   ]
 }

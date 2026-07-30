@@ -1,0 +1,17 @@
+{
+  "name": "markbel-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "backend"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:mobile": "npm run start --workspace=apps/mobile",
+    "dev:desktop": "npm run dev --workspace=apps/desktop",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build:all": "npm run build --workspaces --if-present",
+    "test:packages": "npm run test --workspaces --if-present"
+  }
+}

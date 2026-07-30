@@ -16,7 +16,9 @@ const BookmarkSchema = new Schema({
     ticktickTaskId: { type: String, default: '' },
     ticktickProjectId: { type: String, default: '' },
     createdAt: { type: String, required: true },
-    updatedAt: { type: String, required: true }
+    updatedAt: { type: String, required: true },
+    version: { type: Number, required: true, default: 0 },
+    deletedAt: { type: String, default: null }
 }, {
     toJSON: {
         transform: (doc, ret) => {
