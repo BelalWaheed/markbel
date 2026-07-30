@@ -4,7 +4,7 @@ dotenv.config()
 
 const CLIENT_ID = process.env.TICKTICK_CLIENT_ID || ''
 const CLIENT_SECRET = process.env.TICKTICK_CLIENT_SECRET || ''
-const REDIRECT_URI = process.env.TICKTICK_REDIRECT_URI || 'http://localhost:3000/api/integrations/ticktick/callback'
+const REDIRECT_URI = process.env.TICKTICK_REDIRECT_URI || 'http://localhost:3001/api/integrations/ticktick/callback'
 
 export function getTickTickAuthUrl(state: string = ''): string {
   const params = new URLSearchParams({

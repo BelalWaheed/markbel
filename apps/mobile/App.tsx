@@ -48,8 +48,7 @@ export default function App() {
     const handler = setTimeout(async () => {
       setIsScrapingMeta(true);
       try {
-        // TODO: Replace with prod URL dynamically if needed
-        const apiUrl = 'http://192.168.1.100:3001/api/metadata'; // Replace with backend IP for mobile testing
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL ? `${process.env.EXPO_PUBLIC_API_URL}/api/metadata` : 'http://10.0.2.2:3001/api/metadata';
         const res = await fetch(`${apiUrl}?url=${encodeURIComponent(url.trim())}`);
         const meta = await res.json();
         if (meta && meta.title && !title) {

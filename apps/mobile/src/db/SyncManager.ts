@@ -6,7 +6,7 @@ const storage = new SQLiteSyncStorage();
 const env = new MobileEnvironment();
 
 // We need an absolute URL for the API since React Native doesn't run in a browser with a relative origin
-const API_BASE_URL = 'http://10.0.2.2:3000'; // Default Android emulator host for localhost
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3001'; // Default Android emulator host for localhost
 
 const apiClient: ApiClient = {
   get: async (endpoint: string, headers?: any, signal?: AbortSignal) => {
