@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "Markbel",
-    "slug": "markbel",
+    "slug": "bel",
+    "owner": "belal-waheed-so-its-never-too-late-for-coffee",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
@@ -49,7 +50,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "ab233480-b7c7-4326-b3db-e04f0e5379d5"
+        "projectId": "96a1cabe-15ba-494d-8252-bc88755bd52f"
       }
     }
   }
