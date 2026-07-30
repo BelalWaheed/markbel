@@ -11,6 +11,7 @@
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "dev:desktop": "npm run dev --workspace=apps/desktop",
     "dev:backend": "npm run dev --workspace=backend",
+    "build:win": "npm run build:win --workspace=apps/desktop",
     "build:all": "npm run build --workspaces --if-present",
     "test:packages": "npm run test --workspaces --if-present"
   }
