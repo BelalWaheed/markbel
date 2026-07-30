@@ -5,10 +5,12 @@ interface LogoProps {
   size?: number;
 }
 
+import logo from '../../../../resources/logo.png';
+
 export default function MarkbelLogo({ className = '', size = 48 }: LogoProps) {
   return (
     <img 
-      src="/logo.png" 
+      src={logo} 
       alt="Markbel Logo" 
       width={size} 
       height={size} 
