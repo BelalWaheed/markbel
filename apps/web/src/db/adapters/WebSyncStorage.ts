@@ -49,7 +49,7 @@ export class WebSyncStorage implements SyncStorage {
   }
 
   async getAuthToken(): Promise<string | null> {
-    return localStorage.getItem('markbel_token') || localStorage.getItem('token');
+    return 'cookie';
   }
 
   async removeAuthToken(): Promise<void> {

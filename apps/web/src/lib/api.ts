@@ -6,21 +6,17 @@ export interface APIResponse<T = any> {
 const API_BASE = '/api'
 
 function getHeaders(): HeadersInit {
-  const token = localStorage.getItem('markbel_token')
-  const headers: HeadersInit = {
+  return {
     'Content-Type': 'application/json'
   }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  return headers
 }
 
 export const api = {
   async get<T>(path: string): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'GET',
-      headers: getHeaders()
+      headers: getHeaders(),
+      credentials: 'include'
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Request failed')
@@ -31,6 +27,7 @@ export const api = {
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
       headers: getHeaders(),
+      credentials: 'include',
       body: JSON.stringify(body)
     })
     const data = await res.json()
@@ -42,6 +39,7 @@ export const api = {
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'PUT',
       headers: getHeaders(),
+      credentials: 'include',
       body: JSON.stringify(body)
     })
     const data = await res.json()
@@ -53,6 +51,7 @@ export const api = {
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'PATCH',
       headers: getHeaders(),
+      credentials: 'include',
       body: body ? JSON.stringify(body) : undefined
     })
     const data = await res.json()
@@ -63,7 +62,8 @@ export const api = {
   async delete<T>(path: string, body?: any): Promise<T> {
     const opts: RequestInit = {
       method: 'DELETE',
-      headers: getHeaders()
+      headers: getHeaders(),
+      credentials: 'include'
     }
     if (body) {
       opts.body = JSON.stringify(body)

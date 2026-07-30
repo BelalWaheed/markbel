@@ -1,5 +1,6 @@
 import express, { Response } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -31,8 +32,15 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_for_local_dev";
 
 const CRON_SECRET = process.env.CRON_SECRET || "fallback_cron_secret";
 
-app.use(cors());
+app.use(cors({ 
+  origin: (origin, callback) => {
+    // Allow all origins, including 'null' (Electron file://) or undefined (server-to-server)
+    callback(null, true);
+  }, 
+  credentials: true 
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -103,6 +111,13 @@ app.post("/api/users/signup", authLimiter, async (req, res) => {
     const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "7d" });
     const userObj = user.toJSON();
 
+    res.cookie("markbel_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     res.status(201).json({ token, user: userObj });
   } catch (err: any) {
     console.error("[API Signup] Error:", err);
@@ -152,11 +167,24 @@ app.post("/api/users/login", authLimiter, async (req, res) => {
     const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "7d" });
     const userObj = user.toJSON();
 
+    res.cookie("markbel_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     res.json({ token, user: userObj });
   } catch (err: any) {
     console.error("[API Login] Error:", err);
     res.status(500).json({ error: err.message || "Internal Server Error" });
   }
+});
+
+// POST /api/users/logout
+app.post("/api/users/logout", (req, res) => {
+  res.clearCookie("markbel_token");
+  res.json({ message: "Logged out successfully" });
 });
 
 // GET /api/users/me (Get profile)

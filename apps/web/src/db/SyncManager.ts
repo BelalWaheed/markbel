@@ -7,7 +7,7 @@ const env = new WebEnvironment();
 
 const apiClient: ApiClient = {
   get: async (endpoint: string, headers?: any, signal?: AbortSignal) => {
-    const res = await fetch(endpoint, { headers, signal });
+    const res = await fetch(endpoint, { headers, signal, credentials: 'include' });
     if (!res.ok) {
       const err: any = new Error(`Pull request failed: ${res.status}`);
       err.status = res.status;
@@ -20,7 +20,8 @@ const apiClient: ApiClient = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(data),
-      signal
+      signal,
+      credentials: 'include'
     });
     if (!res.ok) {
       const err: any = new Error(`Push request failed: ${res.status}`);
@@ -34,7 +35,8 @@ const apiClient: ApiClient = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(data),
-      signal
+      signal,
+      credentials: 'include'
     });
     if (!res.ok) {
       const err: any = new Error(`Put request failed: ${res.status}`);

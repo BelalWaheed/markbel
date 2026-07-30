@@ -3,7 +3,7 @@ export interface APIResponse<T = any> {
   error?: string
 }
 
-const API_BASE = '/api'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 function getHeaders(): HeadersInit {
   const token = localStorage.getItem('markbel_token')
