@@ -13,6 +13,7 @@ export interface Bookmark {
   description?: string;
   tags: string[];
   group?: string;
+  image?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -48,9 +49,9 @@ export const bookmarkRepository: SyncRepository<Bookmark> = {
     
     await db.withTransactionAsync(async () => {
       await db.runAsync(
-        `INSERT INTO bookmarks (id, url, title, description, tags, "group", version, createdAt, updatedAt, deletedAt) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [bookmark.id, bookmark.url, bookmark.title, bookmark.description || null, JSON.stringify(bookmark.tags), bookmark.group || null, bookmark.version, bookmark.createdAt, bookmark.updatedAt, bookmark.deletedAt]
+        `INSERT INTO bookmarks (id, url, title, description, tags, "group", image, version, createdAt, updatedAt, deletedAt) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [bookmark.id, bookmark.url, bookmark.title, bookmark.description || null, JSON.stringify(bookmark.tags), bookmark.group || null, bookmark.image || null, bookmark.version, bookmark.createdAt, bookmark.updatedAt, bookmark.deletedAt]
       );
       
       await db.runAsync(

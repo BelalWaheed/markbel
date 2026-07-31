@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, SafeAreaView, StatusBar, View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, SafeAreaView, StatusBar, View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Image, ScrollView } from 'react-native';
 import { initDb } from './src/db/db';
 import { syncManager, SyncState } from './src/db/SyncManager';
 import { bookmarkRepository, Bookmark } from './src/db/SyncRepository';
@@ -33,9 +33,19 @@ export default function App() {
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
   const [group, setGroup] = useState('');
+  const [image, setImage] = useState('');
   
   const [isScrapingMeta, setIsScrapingMeta] = useState(false);
   const [fetchedMeta, setFetchedMeta] = useState<{ title: string; description: string; image: string } | null>(null);
+  
+  // Edit Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editUrl, setEditUrl] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editGroup, setEditGroup] = useState('');
+
   const deepLink = Linking.useURL();
 
   // Handle TickTick Deep Link
@@ -106,17 +116,40 @@ export default function App() {
       description: description || '',
       group: group || 'Read Later',
       tags: [],
-    });
+      image: image || '',
+    } as any);
     setUrl('');
     setTitle('');
     setDescription('');
     setGroup('');
+    setImage('');
     setFetchedMeta(null);
     syncManager.sync();
   };
 
   const handleDelete = async (id: string) => {
     await bookmarkRepository.delete(id);
+    syncManager.sync();
+  };
+
+  const openEdit = (item: Bookmark) => {
+    setEditId(item.id);
+    setEditTitle(item.title);
+    setEditUrl(item.url);
+    setEditDescription(item.description || '');
+    setEditGroup(item.group || 'Read Later');
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editId) return;
+    await bookmarkRepository.update(editId, {
+      title: editTitle,
+      url: editUrl,
+      description: editDescription,
+      group: editGroup
+    });
+    setShowEditModal(false);
     syncManager.sync();
   };
 
@@ -168,6 +201,7 @@ export default function App() {
                 onPress={() => {
                   if (!title) setTitle(fetchedMeta.title);
                   if (!description) setDescription(fetchedMeta.description);
+                  if (!image && fetchedMeta.image) setImage(fetchedMeta.image);
                   setFetchedMeta(null);
                 }}
               >
@@ -202,20 +236,87 @@ export default function App() {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <TouchableOpacity style={styles.card} onPress={() => Linking.openURL(item.url).catch(console.error)}>
             <View style={styles.cardHeader}>
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{item.group || 'Read Later'}</Text>
               </View>
-              <TouchableOpacity onPress={() => handleDelete(item.id)}>
-                <Text style={styles.deleteText}>Delete</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row' }}>
+                <TouchableOpacity onPress={() => openEdit(item)} style={{ marginRight: 12 }}>
+                  <Text style={styles.editText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDelete(item.id)}>
+                  <Text style={styles.deleteText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-            <Text style={styles.cardUrl} numberOfLines={1}>{item.url}</Text>
-          </View>
+            <View style={styles.cardBody}>
+              <View style={styles.cardTextContent}>
+                <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+                {item.description ? (
+                  <Text style={styles.cardDescription} numberOfLines={2}>{item.description}</Text>
+                ) : null}
+                <Text style={styles.cardUrl} numberOfLines={1}>{item.url}</Text>
+              </View>
+              {item.image ? (
+                <Image source={{ uri: item.image }} style={styles.cardImage} />
+              ) : null}
+            </View>
+          </TouchableOpacity>
         )}
       />
+
+      {/* Edit Modal */}
+      <Modal visible={showEditModal} animationType="slide" transparent={true}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Bookmark</Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <Text style={styles.modalCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
+              <Text style={styles.modalLabel}>URL</Text>
+              <TextInput 
+                style={styles.modalInput} 
+                value={editUrl} 
+                onChangeText={setEditUrl} 
+                autoCapitalize="none"
+              />
+              
+              <Text style={styles.modalLabel}>Title</Text>
+              <TextInput 
+                style={styles.modalInput} 
+                value={editTitle} 
+                onChangeText={setEditTitle} 
+              />
+
+              <Text style={styles.modalLabel}>Description</Text>
+              <TextInput 
+                style={[styles.modalInput, { height: 80 }]} 
+                value={editDescription} 
+                onChangeText={setEditDescription} 
+                multiline
+                textAlignVertical="top"
+              />
+
+              <Text style={styles.modalLabel}>Collection</Text>
+              <TextInput 
+                style={styles.modalInput} 
+                value={editGroup} 
+                onChangeText={setEditGroup} 
+              />
+            </ScrollView>
+
+            <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleEditSubmit}>
+              <Text style={styles.modalSubmitBtnText}>Save Changes</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -245,7 +346,22 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   badge: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   badgeText: { fontSize: 11, fontWeight: '700', color: '#4B5563', textTransform: 'uppercase' },
+  editText: { color: '#3B82F6', fontSize: 13, fontWeight: '600' },
   deleteText: { color: '#EF4444', fontSize: 13, fontWeight: '600' },
+  cardBody: { flexDirection: 'row', alignItems: 'flex-start' },
+  cardTextContent: { flex: 1, marginRight: 12 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4, lineHeight: 22 },
-  cardUrl: { fontSize: 13, color: '#9CA3AF' }
+  cardDescription: { fontSize: 13, color: '#4B5563', marginBottom: 6, lineHeight: 18 },
+  cardUrl: { fontSize: 13, color: '#9CA3AF' },
+  cardImage: { width: 80, height: 80, borderRadius: 8, backgroundColor: '#F3F4F6' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
+  modalCloseText: { color: '#6B7280', fontSize: 15, fontWeight: '600' },
+  modalBody: { marginBottom: 20 },
+  modalLabel: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6, textTransform: 'uppercase' },
+  modalInput: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, padding: 14, marginBottom: 16, backgroundColor: '#F9FAFB', fontSize: 15, color: '#1F2937' },
+  modalSubmitBtn: { backgroundColor: '#111827', paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  modalSubmitBtnText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 16 }
 });

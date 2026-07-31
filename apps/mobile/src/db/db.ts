@@ -11,6 +11,7 @@ export async function initDb() {
       description TEXT,
       tags TEXT NOT NULL,
       "group" TEXT,
+      image TEXT,
       version INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
@@ -49,8 +50,14 @@ export async function initDb() {
   `);
 
   try {
-    // Attempt to add "group" column if it doesn't exist (for existing dev DBs)
+    // Attempt to add "group" and "image" columns if they don't exist (for existing dev DBs)
     await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN "group" TEXT;`);
+  } catch (e) {
+    // Ignore error if column already exists
+  }
+  
+  try {
+    await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN "image" TEXT;`);
   } catch (e) {
     // Ignore error if column already exists
   }
