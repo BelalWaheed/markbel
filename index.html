@@ -13,6 +13,9 @@
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#f0efea" />
 
+    <!-- Canonical Link -->
+    <link rel="canonical" href="https://markbel.vercel.app/" />
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://markbel.vercel.app" />
@@ -31,6 +34,19 @@
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
     <link rel="manifest" href="/manifest.json" />
+
+    <!-- Structured Data (JSON-LD) for SEO -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Markbel",
+        "url": "https://markbel.vercel.app",
+        "description": "Markbel is a premium, secure bookmarks vault and link manager that lets you organize, search, and preview your links in real-time.",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "All"
+      }
+    </script>
   </head>
   <body class="bg-[#f0efea] text-[#3b3b3b] antialiased min-h-screen">
     <div id="root"></div>
