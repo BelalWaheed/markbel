@@ -20,7 +20,6 @@ export default function ShareTargetPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setShowSuccess(false)
         setShowNewGroupInput(false)
       }
     }

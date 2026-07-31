@@ -381,7 +381,7 @@ export default function BookmarksPage() {
     let result = bookmarks
 
     // Group filter
-    if (activeGroup && !searchQuery.trim()) {
+    if (activeGroup && !debouncedSearchQuery.trim()) {
       result = result.filter((b) => (b.group || 'Unsorted') === activeGroup)
     }
 

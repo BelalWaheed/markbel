@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, SafeAreaView, StatusBar, View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Image, ScrollView } from 'react-native';
+import { StyleSheet, SafeAreaView, StatusBar, View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Image, ScrollView, AppState } from 'react-native';
 import { initDb } from './src/db/db';
 import { syncManager, SyncState } from './src/db/SyncManager';
 import { bookmarkRepository, Bookmark } from './src/db/SyncRepository';
@@ -77,6 +77,17 @@ export default function App() {
     return () => clearTimeout(handler);
   }, [url]);
 
+  const loadLocalBookmarks = async () => {
+    if (!dbInitialized) return;
+    try {
+      const db = SQLite.openDatabaseSync('markbel.db');
+      const rows = await db.getAllAsync(`SELECT * FROM bookmarks WHERE deletedAt IS NULL ORDER BY createdAt DESC`) as Bookmark[];
+      setBookmarks(rows.map(r => ({ ...r, tags: JSON.parse((r.tags as any) || '[]') })));
+    } catch (err) {
+      console.warn('Failed to load bookmarks:', err);
+    }
+  };
+
   useEffect(() => {
     async function setup() {
       await initDb();
@@ -84,7 +95,12 @@ export default function App() {
       await initializeNotifications();
       await syncManager.registerDevice('mobile', '1.0.0');
       syncManager.startPeriodicSync();
-      syncManager.subscribe(state => setSyncState(state));
+      syncManager.subscribe(state => {
+        setSyncState(state);
+        if (state === SyncState.Idle) {
+          loadLocalBookmarks();
+        }
+      });
 
       BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
         minimumInterval: 15 * 60,
@@ -96,15 +112,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!dbInitialized) return;
-    const db = SQLite.openDatabaseSync('markbel.db');
-    
-    const interval = setInterval(async () => {
-      const rows = await db.getAllAsync(`SELECT * FROM bookmarks WHERE deletedAt IS NULL ORDER BY createdAt DESC`) as Bookmark[];
-      setBookmarks(rows.map(r => ({ ...r, tags: JSON.parse((r.tags as any) || '[]') })));
-    }, 1000);
-    
-    return () => clearInterval(interval);
+    if (dbInitialized) {
+      loadLocalBookmarks();
+    }
+  }, [dbInitialized]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        loadLocalBookmarks();
+      }
+    });
+    return () => subscription.remove();
   }, [dbInitialized]);
 
   const handleAdd = async () => {

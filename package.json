@@ -13,7 +13,11 @@
     "dev:backend": "npm run dev --workspace=backend",
     "build:win": "npm run build:win --workspace=apps/desktop",
     "build:all": "npm run build --workspaces --if-present",
-    "test:packages": "npm run test --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:packages": "npm run test --workspaces --if-present",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build:all"
   },
   "version": "2.1.0"
 }
