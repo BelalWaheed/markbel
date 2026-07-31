@@ -16,6 +16,18 @@ export default function ShareTargetPage() {
   const [selectedGroup, setSelectedGroup] = useState('Read Later')
   const [newGroupInput, setNewGroupInput] = useState('')
   const [showNewGroupInput, setShowNewGroupInput] = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSuccess(false)
+        setShowNewGroupInput(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const [isLoadingMeta, setIsLoadingMeta] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -246,7 +258,7 @@ export default function ShareTargetPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group</label>
+              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Collection</label>
               {!showNewGroupInput ? (
                 <div className="flex items-center gap-2">
                   <select
@@ -269,7 +281,7 @@ export default function ShareTargetPage() {
                     type="button"
                     onClick={() => setShowNewGroupInput(true)}
                     className="btn-secondary rounded-md p-2.5 flex items-center justify-center shrink-0"
-                    title="Create new folder group"
+                    title="Create new collection"
                   >
                     <FolderPlus className="w-4 h-4" />
                   </button>
@@ -298,7 +310,7 @@ export default function ShareTargetPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group Custom Color</label>
+              <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Collection Custom Color</label>
               <div className="flex gap-2.5 pt-1">
                 {(['cyan', 'pink', 'green', 'yellow'] as const).map((color) => {
                   const colorClasses = {
@@ -322,7 +334,7 @@ export default function ShareTargetPage() {
                       className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center cursor-pointer shadow-sm ${
                         isSelected ? `${colorClasses[color]} scale-110` : `bg-transparent ${borderClasses[color]}`
                       }`}
-                      title={`Set group color to ${color}`}
+                      title={`Set collection color to ${color}`}
                     >
                       {isSelected && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
                     </button>
