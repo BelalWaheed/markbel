@@ -98,6 +98,7 @@ export default function BookmarksPage() {
   const [formRemindAt, setFormRemindAt] = useState('')
   const [newGroupInput, setNewGroupInput] = useState('')
   const [isScrapingMeta, setIsScrapingMeta] = useState(false)
+  const [fetchedMeta, setFetchedMeta] = useState<{ title: string; description: string; image: string } | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
   // Custom themed delete confirmation states
@@ -201,6 +202,22 @@ export default function BookmarksPage() {
   const [formGroupName, setFormGroupName] = useState('')
   const [formGroupColor, setFormGroupColor] = useState('cyan')
   const [isSavingGroup, setIsSavingGroup] = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowAddModal(false)
+        setShowEditModal(false)
+        setShowTickTickModal(false)
+        setShowArchiveModal(false)
+        setShowDeleteModal(false)
+        setShowEditGroupModal(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
 
   // Customizable group colors mapping state
   const [groupColors, setGroupColors] = useState<Record<string, string>>(() => {
@@ -414,10 +431,8 @@ export default function BookmarksPage() {
         const meta = await api.get<{ title: string; description: string; image: string }>(
           `/metadata?url=${encodeURIComponent(formUrl.trim())}`
         );
-        if (meta) {
-          if (meta.title && !formTitle) setFormTitle(meta.title);
-          if (meta.description && !formDescription) setFormDescription(meta.description);
-          if (meta.image && !formImage) setFormImage(meta.image);
+        if (meta && (meta.title || meta.description)) {
+          setFetchedMeta(meta);
         }
       } catch (e) {
         console.warn('Scraper failed:', e);
@@ -473,11 +488,10 @@ export default function BookmarksPage() {
       })
 
       updateGroupColor(finalGroup, selectedColor)
-      setBookmarks([newB, ...bookmarks])
       resetForm()
       setShowAddModal(false)
-      loadStats()
       
+      await loadBookmarks()
       syncManager.sync()
 
     } catch (err) {
@@ -505,10 +519,10 @@ export default function BookmarksPage() {
       })
 
       updateGroupColor(finalGroup, selectedColor)
-      if (updatedB) setBookmarks(bookmarks.map((b) => (b.id === selectedBookmark.id ? updatedB : b)))
       resetForm()
       setShowEditModal(false)
       
+      await loadBookmarks()
       syncManager.sync()
     } catch (err) {
       console.error(err)
@@ -527,15 +541,14 @@ export default function BookmarksPage() {
     if (!bookmarkToDelete) return
     try {
       await bookmarkRepository.delete(bookmarkToDelete.id)
-      setBookmarks(bookmarks.filter((b) => b.id !== bookmarkToDelete.id))
       if (selectedBookmark?.id === bookmarkToDelete.id) {
         setShowEditModal(false)
         resetForm()
       }
       setShowDeleteModal(false)
       setBookmarkToDelete(null)
-      loadStats()
       
+      await loadBookmarks()
       syncManager.sync()
     } catch (err) {
       console.error(err)
@@ -556,11 +569,10 @@ export default function BookmarksPage() {
         isArchived: true,
         archiveGroup: archiveGroupInput.trim() || 'archive-general'
       })
-      setBookmarks(bookmarks.filter((b) => b.id !== bookmarkToArchive.id))
       setShowArchiveModal(false)
       setBookmarkToArchive(null)
-      loadStats()
       
+      await loadBookmarks()
       syncManager.sync()
     } catch (err) {
       console.error(err)
@@ -650,6 +662,7 @@ export default function BookmarksPage() {
     setFormGroup('Read Later')
     setNewGroupInput('')
     setSelectedBookmark(null)
+    setFetchedMeta(null)
   }
 
   const openEdit = (b: any) => {
@@ -1175,7 +1188,10 @@ export default function BookmarksPage() {
 
       {/* Add Bookmark Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowAddModal(false); }}
+        >
           <div className="studio-card w-full max-w-lg p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold text-[var(--color-text-primary)]">Add Bookmark</h3>
@@ -1203,6 +1219,33 @@ export default function BookmarksPage() {
                   </div>
                 )}
               </div>
+              
+              {isScrapingMeta && (
+                <div className="text-xs text-[var(--color-text-muted)] flex items-center gap-2">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Fetching link details in background...
+                </div>
+              )}
+              {fetchedMeta && !isScrapingMeta && (
+                <div className="bg-[var(--color-bg-element)] border border-[var(--color-border-default)] p-3 rounded-md flex items-center justify-between">
+                  <div className="text-xs text-[var(--color-text-muted)]">
+                    <span className="font-semibold text-[var(--color-text-primary)]">Link details found!</span>
+                    <br/>
+                    <span className="truncate block max-w-[250px]">{fetchedMeta.title}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      if (!formTitle) setFormTitle(fetchedMeta.title);
+                      if (!formDescription) setFormDescription(fetchedMeta.description);
+                      if (!formImage) setFormImage(fetchedMeta.image);
+                      setFetchedMeta(null);
+                    }}
+                    className="btn-primary px-3 py-1.5 text-xs rounded"
+                  >
+                    ✨ Auto-fill Form
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Title</label>
@@ -1229,7 +1272,7 @@ export default function BookmarksPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Collection</label>
                   <select
                     value={formGroup}
                     onChange={(e) => {
@@ -1253,12 +1296,12 @@ export default function BookmarksPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Or Create Group</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Or Create Collection</label>
                   <input 
                     type="text"
                     value={newGroupInput}
                     onChange={(e) => setNewGroupInput(e.target.value)}
-                    placeholder="New Group Name" 
+                    placeholder="New Collection Name" 
                     className="w-full studio-input px-3.5 py-2.5 text-sm"
                   />
                 </div>
@@ -1347,7 +1390,7 @@ export default function BookmarksPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Group</label>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Collection</label>
                   <select
                     value={formGroup}
                     onChange={(e) => {
@@ -1369,7 +1412,7 @@ export default function BookmarksPage() {
                     type="text"
                     value={newGroupInput}
                     onChange={(e) => setNewGroupInput(e.target.value)}
-                    placeholder="New Group Name" 
+                    placeholder="New Collection Name" 
                     className="w-full studio-input px-3.5 py-2.5 text-sm"
                   />
                 </div>
@@ -1503,7 +1546,7 @@ export default function BookmarksPage() {
               </p>
 
               <div>
-                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Archive Sub-Group (Optional)</label>
+                <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Archive Sub-Collection (Optional)</label>
                 <input 
                   type="text"
                   value={archiveGroupInput}
@@ -1561,10 +1604,13 @@ export default function BookmarksPage() {
 
       {/* Edit Group Modal */}
       {showEditGroupModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEditGroupModal(false); }}
+        >
           <div className="studio-card w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Edit Group Name</h3>
+              <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Edit Collection Name</h3>
               <button onClick={() => setShowEditGroupModal(false)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors p-1 rounded hover:bg-[var(--color-bg-hover)]">
                 <X className="w-4 h-4" />
               </button>
