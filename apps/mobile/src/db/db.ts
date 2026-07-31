@@ -10,6 +10,7 @@ export async function initDb() {
       title TEXT NOT NULL,
       description TEXT,
       tags TEXT NOT NULL,
+      "group" TEXT,
       version INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
@@ -46,4 +47,11 @@ export async function initDb() {
       protocolVersion INTEGER NOT NULL DEFAULT 1
     );
   `);
+
+  try {
+    // Attempt to add "group" column if it doesn't exist (for existing dev DBs)
+    await db.execAsync(`ALTER TABLE bookmarks ADD COLUMN "group" TEXT;`);
+  } catch (e) {
+    // Ignore error if column already exists
+  }
 }

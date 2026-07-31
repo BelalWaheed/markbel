@@ -12,6 +12,7 @@ export interface Bookmark {
   title: string;
   description?: string;
   tags: string[];
+  group?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -47,9 +48,9 @@ export const bookmarkRepository: SyncRepository<Bookmark> = {
     
     await db.withTransactionAsync(async () => {
       await db.runAsync(
-        `INSERT INTO bookmarks (id, url, title, description, tags, version, createdAt, updatedAt, deletedAt) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [bookmark.id, bookmark.url, bookmark.title, bookmark.description || null, JSON.stringify(bookmark.tags), bookmark.version, bookmark.createdAt, bookmark.updatedAt, bookmark.deletedAt]
+        `INSERT INTO bookmarks (id, url, title, description, tags, "group", version, createdAt, updatedAt, deletedAt) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [bookmark.id, bookmark.url, bookmark.title, bookmark.description || null, JSON.stringify(bookmark.tags), bookmark.group || null, bookmark.version, bookmark.createdAt, bookmark.updatedAt, bookmark.deletedAt]
       );
       
       await db.runAsync(
@@ -75,7 +76,7 @@ export const bookmarkRepository: SyncRepository<Bookmark> = {
       
       const payload: any = { ...updates };
       
-      const sets = Object.keys(updates).map(k => `${k} = ?`);
+      const sets = Object.keys(updates).map(k => `"${k}" = ?`);
       const vals = Object.values(updates).map(v => {
           if (Array.isArray(v)) return JSON.stringify(v);
           return v;
@@ -139,10 +140,6 @@ export const bookmarkRepository: SyncRepository<Bookmark> = {
   },
 
   async applyRemoteChange(operation, version, record, deletedAt) {
-    const db = getDb();
-    // Implementation is mostly handled by SQLiteSyncStorage, but since UI might need direct repository sync applying,
-    // we can either duplicate logic or let SyncStorage handle it entirely and make this a no-op / direct route.
-    // In our SyncManager.ts, SyncStorage handles applyRemoteChanges instead of calling the repository.
-    // So this is deprecated for the new SyncManager! We can leave it as no-op.
+    // Deprecated for the new SyncManager!
   }
 };
